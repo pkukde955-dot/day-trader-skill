@@ -6,8 +6,11 @@
 
 ## Verified from public documentation
 
-- Tradebit publishes an official API documentation site: https://apidocs.tradebit.io/
-- Its public introduction describes an API intended for application integration, but the accessible introduction alone does not specify the endpoint contracts required for a safe NSE/BSE F&O integration.
+- Official API documentation site and introduction: https://apidocs.tradebit.io/
+- The public API reference includes login and OTP-verification routes under `/api/login` and `/api/verifyLogin`. These establish an account-authentication flow, not broker trading authorization or an order API.
+- The public crypto reference documents endpoints such as `/dashboard/all-symbols`, `/list-crypto/get`, `/chart`, and `/list-crypto/market-data/{symbol}`. These are documented as crypto data endpoints and do not establish NSE/BSE cash or F&O market-data support.
+- The public documentation also includes crypto wallet functions. Wallet and crypto API coverage must not be treated as proof of Indian exchange derivatives support.
+- In the public documentation checked for this review, I did not verify the full NSE/BSE F&O contracts required for a safe broker integration. Treat all items in the checklist below as unverified until an official, explicit contract is found.
 
 ## Not yet verified - do not guess these contracts
 
@@ -48,5 +51,8 @@ It is not a market-data client, Tradebit adapter, or live-order system. Keep tho
 ## Evidence / links
 
 - Official Tradebit API introduction: https://apidocs.tradebit.io/
+- Official authentication reference: https://apidocs.tradebit.io/api-reference/public-apis/auth
+- Official crypto API reference: https://apidocs.tradebit.io/api-reference/public-apis/crypto
+- Official wallet withdrawal reference (crypto wallet scope): https://apidocs.tradebit.io/api-reference/private-apis/wallet/withdraw
 - Existing project order-intent helper: `trader-scanner/india_fno/order_intent.py`
 - Existing read-only feasibility probe: `trader-scanner/india_fno/probe.py`
