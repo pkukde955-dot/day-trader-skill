@@ -1,4 +1,9 @@
+import sys
 import unittest
+from pathlib import Path
+
+# The skill folder contains a hyphen, so add it explicitly for package import.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "trader-scanner"))
 
 from india_fno.probe import parse_chart
 
