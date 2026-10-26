@@ -1,4 +1,4 @@
-# Tradebit API readiness — NSE/BSE F&O
+# Tradebit API readiness - NSE/BSE F&O
 
 **Status checked:** 2026-10-26  
 **Repository branch:** `feat/india-fno-readonly-probe`  
@@ -9,7 +9,7 @@
 - Tradebit publishes an official API documentation site: https://apidocs.tradebit.io/
 - Its public introduction describes an API intended for application integration, but the accessible introduction alone does not specify the endpoint contracts required for a safe NSE/BSE F&O integration.
 
-## Not yet verified — do not guess these contracts
+## Not yet verified - do not guess these contracts
 
 Before writing a Tradebit adapter, locate explicit official documentation for each item below and record the exact path, HTTP method, required fields, authentication/signature scheme, response schema, rate limits, and supported exchange segment:
 
