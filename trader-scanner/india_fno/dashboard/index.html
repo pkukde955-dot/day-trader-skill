@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101827">
+<title>India F&O SMC Signal Desk</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#121d30;--line:#26354b;--text:#e8eef8;--muted:#9eacc2;--green:#38d996;--red:#ff727d;--amber:#ffc766;--blue:#7bb7ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:20px 16px 16px;background:#101827;border-bottom:1px solid var(--line)}h1{font-size:22px;margin:0 0 5px}h2{font-size:16px;margin:0 0 12px}.sub{color:var(--muted);font-size:13px}
+main{max-width:1120px;margin:auto;padding:14px;display:grid;gap:12px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0}
+label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px}input[type=file],select,button{width:100%;border-radius:9px;border:1px solid var(--line);padding:11px;background:#0d1728;color:var(--text);font:inherit}input[type=file]{font-size:12px}button{cursor:pointer;background:#214b78;border-color:#356ba5;font-weight:650}button.secondary{background:#172438}button:disabled{opacity:.45}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{padding:10px;background:#0d1728;border:1px solid var(--line);border-radius:10px}.stat b{display:block;font-size:20px}.stat span{font-size:12px;color:var(--muted)}
+.notice{border-left:3px solid var(--amber);padding:10px 12px;background:#2a2419;border-radius:7px;color:#ffe1a8;font-size:13px}.ok{color:var(--green)}.bad{color:var(--red)}.muted{color:var(--muted)}
+.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{border-collapse:collapse;width:100%;min-width:760px;font-size:13px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line);white-space:nowrap}th{background:#0d1728;color:var(--muted);font-weight:600}tr:last-child td{border-bottom:0}.pill{display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:750;background:#253247}.buy{color:var(--green)}.sell{color:var(--red)}.wait{color:var(--amber)}
+small{color:var(--muted)}footer{max-width:1120px;margin:0 auto;padding:0 14px 24px;color:var(--muted);font-size:12px}
+@media(max-width:650px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr 1fr}main{padding:10px}.panel{padding:12px}h1{font-size:20px}}
+</style>
+</head>
+<body>
+<header><h1>India F&O SMC Signal Desk</h1><div class="sub">NSE / BSE futures and options · Manual trading only · No broker connection</div></header>
+<main>
+<div class="notice"><b>Data safety:</b> This first version does not fetch exchange data automatically. Import a CSV obtained through a source you are allowed to use. Old, incomplete or invalid candles are rejected. Signals are educational rule-based analysis, not trade advice.</div>
+<section class="grid">
+<div class="panel">
+<h2>1. Import contract master (optional)</h2>
+<label for="contracts">CSV with a symbol column; use an official broker/exchange file you are permitted to use</label>
+<input id="contracts" type="file" accept=".csv,text/csv">
+<p class="sub" id="contractState">No contract master loaded. Symbols from the candle file will be analysed.</p>
+</div>
+<div class="panel">
+<h2>2. Import OHLC candles</h2>
+<label for="candles">CSV columns: timestamp, symbol, open, high, low, close, volume. Optional: exchange, interval</label>
+<input id="candles" type="file" accept=".csv,text/csv">
+<p class="sub" id="candleState">No candle data loaded.</p>
+<div class="actions"><button id="analyse">Analyse signals</button><button class="secondary" id="clear">Clear data</button></div>
+</div>
+</section>
+<section class="panel">
+<h2>Dashboard status</h2>
+<div class="stats">
+<div class="stat"><b id="symbolsN">0</b><span>Symbols loaded</span></div>
+<div class="stat"><b id="freshN">0</b><span>Fresh symbols</span></div>
+<div class="stat"><b id="signalsN">0</b><span>Actionable setups</span></div>
+</div>
+<p id="status" class="sub">Waiting for CSV import.</p>
+</section>
+<section class="panel">
+<h2>Signal scanner</h2>
+<div class="sub" style="margin-bottom:10px">Rules: confirmed close structure break, liquidity sweep, fair value gap and a simple displacement/order-block proxy. A signal is shown only when the latest candle is fresh (no older than 2 candle intervals) and enough candles exist.</div>
+<div class="tablewrap"><table><thead><tr><th>Symbol</th><th>Exchange</th><th>Data time</th><th>Freshness</th><th>Bias / signal</th><th>Setup reason</th><th>Entry ref.</th><th>Stop ref.</th><th>Target ref. (2R)</th></tr></thead><tbody id="results"><tr><td colspan="9" class="muted">Import candles to start.</td></tr></tbody></table></div>
+</section>
+<section class="panel">
+<h2>CSV format example</h2>
+<pre style="white-space:pre-wrap;overflow-wrap:anywhere;color:#c9d7ec;font-size:12px">timestamp,symbol,open,high,low,close,volume,interval,exchange
+2026-10-26T09:15:00+05:30,NIFTY26OCT25000CE,110,116,105,113,1200,5m,NSE</pre>
+<small>For useful structure analysis, supply at least 30 chronological candles per symbol. The sample row above is format-only, not market data. No data is sent to a server or saved by this page.</small>
+</section>
+</main>
+<footer>Manual signals only. No orders, broker credentials, API keys, tracking or automatic scraping. Confirm contract expiry, lot size, tick size, spread and liquidity in your own trading platform before considering any setup.</footer>
+<script>
+(function(){
+"use strict";
+var rawCandles=[],contractSymbols=null;
+var $=function(id){return document.getElementById(id)};
+function parseCSV(text){
+ var rows=[],row=[],field="",quoted=false;
+ text=text.replace(/^\uFEFF/,"");
+ for(var i=0;i<text.length;i++){
+  var c=text[i],n=text[i+1];
+  if(c==='"'&&quoted&&n==='"'){field+='"';i++}
+  else if(c==='"'){quoted=!quoted}
+  else if(c===','&&!quoted){row.push(field.trim());field=""}
+  else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&n==='\n')i++;row.push(field.trim());if(row.some(function(v){return v!==""}))rows.push(row);row=[];field=""}
+  else field+=c;
+ }
+ row.push(field.trim());if(row.some(function(v){return v!==""}))rows.push(row);
+ if(rows.length<2)throw Error("CSV must contain a header and at least one data row.");
+ var headers=rows.shift().map(function(h){return h.trim().toLowerCase().replace(/[ _-]/g,"")});
+ return rows.map(function(r){var o={};headers.forEach(function(h,j){o[h]=r[j]===undefined?"":r[j]});return o});
+}
+function first(o,names){for(var i=0;i<names.length;i++){if(o[names[i]]!==undefined&&o[names[i]]!=="")return o[names[i]]}return ""}
+function number(v){var n=Number(v);return Number.isFinite(n)?n:NaN}
+function intervalMinutes(v){
+ var s=String(v||"5m").toLowerCase().trim(),m=s.match(/^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hour|hours|d|day|days)$/);
+ if(!m)return 5;var n=Number(m[1]),u=m[2];return /^(h|hr|hour|hours)$/.test(u)?n*60:/^(d|day|days)$/.test(u)?n*1440:n;
+}
+function parseCandles(rows){
+ var out=[];
+ rows.forEach(function(o){
+  var sym=String(first(o,["symbol","tradingsymbol","instrument","contract","ticker"])).trim().toUpperCase();
+  var ts=String(first(o,["timestamp","datetime","dateandtime","time","date"])).trim();
+  var ms=Date.parse(ts);
+  var c={symbol:sym,exchange:String(first(o,["exchange","exch","segment"])).toUpperCase()||"UNKNOWN",
+   ts:ts,ms:ms,interval:intervalMinutes(first(o,["interval","timeframe","period"])||"5m"),
+   open:number(first(o,["open","o"])),high:number(first(o,["high","h"])),low:number(first(o,["low","l"])),
+   close:number(first(o,["close","c"])),volume:number(first(o,["volume","vol","v"])||0)};
+  if(!c.symbol||!Number.isFinite(ms)||![c.open,c.high,c.low,c.close].every(Number.isFinite))return;
+  if(c.high<Math.max(c.open,c.close,c.low)||c.low>Math.min(c.open,c.close,c.high)||c.low<=0||c.close<=0)return;
+  out.push(c);
+ });
+ out.sort(function(a,b){return a.symbol.localeCompare(b.symbol)||a.ms-b.ms});
+ var seen={};out=out.filter(function(c){var k=c.symbol+"|"+c.ms;if(seen[k])return false;seen[k]=true;return true});
+ return out;
+}
+function round(n){return Number.isFinite(n)?n.toFixed(2):"-"}
+function getSwing(arr,from,to,type){
+ var vals=arr.slice(from,to).map(function(c){return type==="high"?c.high:c.low});
+ if(!vals.length)return NaN;return type==="high"?Math.max.apply(null,vals):Math.min.apply(null,vals);
+}
+function analyse(group){
+ var c=group[group.length-1],n=group.length,interval=c.interval,ageMin=(Date.now()-c.ms)/60000;
+ var maxAge=interval*2;
+ var base={symbol:c.symbol,exchange:c.exchange,ts:c.ts,age:ageMin,fresh:ageMin>=-interval&&ageMin<=maxAge,signal:"NO SIGNAL",reason:"",entry:null,stop:null,target:null};
+ if(n<30){base.reason="Need at least 30 candles; got "+n;return base}
+ if(!base.fresh){base.reason=ageMin< -interval?"Future timestamp rejected":"Stale data ("+Math.max(0,Math.round(ageMin))+" min old; limit "+maxAge+" min)";return base}
+ var recent=group.slice(-21,-1),prev=group[n-2],swingHigh=getSwing(group,n-21,n-1,"high"),swingLow=getSwing(group,n-21,n-1,"low");
+ var priorHigh=getSwing(group,n-8,n-2,"high"),priorLow=getSwing(group,n-8,n-2,"low");
+ var bullishSweep=prev.low<priorLow&&c.close>priorLow;
+ var bearishSweep=prev.high>priorHigh&&c.close<priorHigh;
+ var bullBreak=c.close>swingHigh, bearBreak=c.close<swingLow;
+ var bullFVG=c.low>group[n-3].high, bearFVG=c.high<group[n-3].low;
+ var candleRange=c.high-c.low,prevRange=prev.high-prev.low;
+ var bullDisplacement=c.close>c.open&&candleRange>0&&Math.abs(c.close-c.open)>=candleRange*0.55&&candleRange>=prevRange*0.8;
+ var bearDisplacement=c.close<c.open&&candleRange>0&&Math.abs(c.close-c.open)>=candleRange*0.55&&candleRange>=prevRange*0.8;
+ var bull= (bullishSweep||bullBreak)&&(bullFVG||bullDisplacement);
+ var bear= (bearishSweep||bearBreak)&&(bearFVG||bearDisplacement);
+ if(bull&&!bear){
+  var stop=getSwing(group,n-6,n,"low");if(!(stop<c.close))stop=Math.min(c.low,prev.low);
+  var risk=c.close-stop;
+  if(risk>0){base.signal="BUY";base.entry=c.close;base.stop=stop;base.target=c.close+2*risk;base.reason=[bullishSweep?"Sell-side liquidity sweep":"",bullBreak?"Bullish structure break":"",bullFVG?"Bullish FVG":"",bullDisplacement?"Bullish displacement":"", ""].filter(Boolean).join(" + ")}
+ }else if(bear&&!bull){
+  var stop2=getSwing(group,n-6,n,"high");if(!(stop2>c.close))stop2=Math.max(c.high,prev.high);
+  var risk2=stop2-c.close;
+  if(risk2>0){base.signal="SELL";base.entry=c.close;base.stop=stop2;base.target=c.close-2*risk2;base.reason=[bearishSweep?"Buy-side liquidity sweep":"",bearBreak?"Bearish structure break":"",bearFVG?"Bearish FVG":"",bearDisplacement?"Bearish displacement":"", ""].filter(Boolean).join(" + ")}
+ }else{base.reason=bull&&bear?"Conflicting bullish/bearish conditions":"No qualifying sweep/structure + displacement/FVG"}
+ return base;
+}
+function render(){
+ var grouped={};rawCandles.forEach(function(c){if(contractSymbols&& !contractSymbols.has(c.symbol))return;(grouped[c.symbol]||(grouped[c.symbol]=[])).push(c)});
+ var keys=Object.keys(grouped),out=keys.map(function(k){return analyse(grouped[k])}).sort(function(a,b){return (a.signal==="NO SIGNAL")-(b.signal==="NO SIGNAL")||a.symbol.localeCompare(b.symbol)});
+ var fresh=out.filter(function(x){return x.fresh}).length,action=out.filter(function(x){return x.signal!=="NO SIGNAL"}).length;
+ $("symbolsN").textContent=keys.length;$("freshN").textContent=fresh;$("signalsN").textContent=action;
+ $("status").textContent=keys.length?("Analysed "+keys.length+" symbol(s). Last run: "+new Date().toLocaleString()):"No valid symbols. Check CSV headers or contract filter.";
+ if(!out.length){$("results").innerHTML='<tr><td colspan="9" class="muted">No matching contracts. Check contract master symbol names.</td></tr>';return}
+ $("results").innerHTML=out.map(function(x){
+  var cls=x.signal==="BUY"?"buy":x.signal==="SELL"?"sell":"wait";
+  return "<tr><td><b>"+esc(x.symbol)+"</b></td><td>"+esc(x.exchange)+"</td><td>"+esc(x.ts)+"</td><td class='"+(x.fresh?"ok":"bad")+"'>"+(x.fresh?"FRESH":Math.max(0,Math.round(x.age))+" min old")+"</td><td class='"+cls+"'><b>"+x.signal+"</b></td><td>"+esc(x.reason)+"</td><td>"+round(x.entry)+"</td><td>"+round(x.stop)+"</td><td>"+round(x.target)+"</td></tr>"
+ }).join("");
+}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+$("contracts").addEventListener("change",function(e){
+ var f=e.target.files[0];if(!f)return;
+ f.text().then(function(t){var rows=parseCSV(t),set=new Set();rows.forEach(function(o){var s=String(first(o,["symbol","tradingsymbol","instrument","contract","ticker"])).trim().toUpperCase();if(s)set.add(s)});
+ if(!set.size)throw Error("No symbol column found. Expected symbol or tradingsymbol.");
+ contractSymbols=set;$("contractState").textContent=set.size+" unique symbols loaded. Candle symbols not in this list will be ignored.";
+ }).catch(function(err){contractSymbols=null;$("contractState").textContent="Could not load contract master: "+err.message});
+});
+$("candles").addEventListener("change",function(e){
+ var f=e.target.files[0];if(!f)return;
+ f.text().then(function(t){var rows=parseCSV(t);rawCandles=parseCandles(rows);if(!rawCandles.length)throw Error("No valid OHLC rows. Check timestamp and OHLC headers.");
+ $("candleState").textContent=rawCandles.length+" valid candle rows loaded from "+f.name+". Latest: "+rawCandles[rawCandles.length-1].ts;
+ $("status").textContent="Data loaded. Press Analyse signals.";render();
+ }).catch(function(err){rawCandles=[];$("candleState").textContent="Could not load candles: "+err.message;render()});
+});
+$("analyse").addEventListener("click",render);
+$("clear").addEventListener("click",function(){rawCandles=[];contractSymbols=null;$("candles").value="";$("contracts").value="";$("contractState").textContent="No contract master loaded. Symbols from the candle file will be analysed.";$("candleState").textContent="No candle data loaded.";$("symbolsN").textContent="0";$("freshN").textContent="0";$("signalsN").textContent="0";$("status").textContent="Data cleared from this page."; $("results").innerHTML='<tr><td colspan="9" class="muted">Import candles to start.</td></tr>'});
+})();
+</script>
+</body></html>
