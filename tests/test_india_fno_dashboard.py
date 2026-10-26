@@ -26,7 +26,7 @@ class IndiaFnoDashboardTests(unittest.TestCase):
         page = HTML.read_text(encoding="utf-8")
         self.assertIn("var maxAge=interval*2", page)
         self.assertIn('if(!base.fresh)', page)
-        self.assertIn('base.signal="NO SIGNAL"', page)
+        self.assertIn('signal:"NO SIGNAL"', page)
 
     def test_server_binds_to_loopback_only(self):
         server = SERVER.read_text(encoding="utf-8")
