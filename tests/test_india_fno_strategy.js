@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { analyse, scanHistory } = require("../trader-scanner/india_fno/dashboard/strategy.js");
+const { analyse, scanHistory, backtestHistory } = require("../trader-scanner/india_fno/dashboard/strategy.js");
 
 function candlesWithBullishBreak() {
   const start = 1_790_000_000_000;
@@ -63,6 +63,47 @@ test("historical scan evaluates each bar from its prefix, not future candles", (
   assert.equal(withFuture.entry, original.entry);
   assert.equal(withFuture.stop, original.stop);
   assert.equal(withFuture.target, original.target);
+});
+
+test("backtest enters next bar and records a target hit in R units", () => {
+  const rows = candlesWithBullishBreak();
+  const step = 300000;
+  rows.push({
+    symbol: "NIFTY", exchange: "NSE", interval: 5,
+    ts: new Date(rows.at(-1).ms + step).toISOString(), ms: rows.at(-1).ms + step,
+    open: 105, high: 106, low: 104, close: 105, volume: 100
+  });
+  rows.push({
+    symbol: "NIFTY", exchange: "NSE", interval: 5,
+    ts: new Date(rows.at(-1).ms + step).toISOString(), ms: rows.at(-1).ms + step,
+    open: 105, high: 117, low: 104, close: 116, volume: 100
+  });
+  const result = backtestHistory(rows);
+  assert.equal(result.trades.length, 1);
+  assert.equal(result.trades[0].entryIndex, 30);
+  assert.equal(result.trades[0].exitReason, "TARGET");
+  assert.equal(result.trades[0].r, 2);
+  assert.equal(result.costsIncluded, false);
+});
+
+test("same-bar stop and target collision resolves conservatively to stop", () => {
+  const rows = candlesWithBullishBreak();
+  const step = 300000;
+  rows.push({
+    symbol: "NIFTY", exchange: "NSE", interval: 5,
+    ts: new Date(rows.at(-1).ms + step).toISOString(), ms: rows.at(-1).ms + step,
+    open: 105, high: 106, low: 104, close: 105, volume: 100
+  });
+  rows.push({
+    symbol: "NIFTY", exchange: "NSE", interval: 5,
+    ts: new Date(rows.at(-1).ms + step).toISOString(), ms: rows.at(-1).ms + step,
+    open: 105, high: 117, low: 99, close: 110, volume: 100
+  });
+  const result = backtestHistory(rows);
+  assert.equal(result.trades.length, 1);
+  assert.equal(result.trades[0].exitReason, "STOP_AND_TARGET_SAME_BAR_STOP_FIRST");
+  assert.equal(result.trades[0].r, -1);
+  assert.equal(result.losses, 1);
 });
 
 test("history shorter than 30 candles produces no backtest signals", () => {
