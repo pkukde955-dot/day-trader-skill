@@ -39,3 +39,11 @@ Official exchange webpages can be viewed manually, and exchange reports may prov
 - https://www.bseindia.com/markets/Derivatives/DeriReports/DeriOptionchain.html
 
 This first milestone deliberately uses imported CSV data instead of inventing a live feed. It is not yet an all-contract live scanner; a lawful current data source is needed for that.
+
+## Historical validation: costs and holdout
+
+- The dashboard can apply a user-entered round-trip cost sensitivity in basis points (bps) of entry notional. It deducts the estimate from each trade's gross R to report net R, expectancy and drawdown. The default is 0 bps, so set a cost assumption before interpreting results.
+- This is a sensitivity estimate, **not** an official brokerage/tax calculator. It does not model exact order-book spread, partial fills, market impact, latency or instrument-specific fees; estimated costs do not make OHLC fills realistic.
+- The chronological 70%/30% holdout reports the first 70% as the development period and the final 30% as the holdout. The holdout uses earlier candles only for signal warm-up; only signals generated inside the holdout are counted there. At least 100 candles per symbol/exchange/interval are required.
+- This is a single chronological holdout, not a walk-forward parameter-optimization study. Do not tune rules against the holdout and then treat it as independent evidence. Prefer additional untouched periods and multiple market regimes.
+- No strategy is declared profitable by this validation. CSV quality, survivorship/contract selection, missing candles, expiry/roll effects and real executable fills remain external risks.
