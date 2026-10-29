@@ -54,9 +54,14 @@ small{color:var(--muted)}footer{max-width:1120px;margin:0 auto;padding:0 14px 24
 <section class="panel">
 <h2>Historical validation (CSV backtest)</h2>
 <div class="notice">Simulation assumptions: signal at candle close, entry at the next candle open, one position per symbol/timeframe, and stop-first if stop and target are touched in the same candle. Open trades at the end of the file are excluded from closed-trade metrics. Brokerage, taxes, spread and slippage are NOT included. Results are historical diagnostics, not evidence of future profitability.</div>
-<div class="actions"><button id="backtest">Run historical backtest</button><button class="secondary" id="clearBacktest">Clear backtest</button></div>
-<p id="backtestStatus" class="sub">Import chronological OHLC candles, then run the backtest.</p>
-<div class="tablewrap"><table><thead><tr><th>Symbol</th><th>Interval</th><th>Closed trades</th><th>Wins / losses</th><th>Win rate</th><th>Net R</th><th>Expectancy R</th><th>Profit factor</th><th>Max drawdown R</th><th>Skipped</th><th>Open at end</th></tr></thead><tbody id="backtestResults"><tr><td colspan="11" class="muted">No backtest run yet.</td></tr></tbody></table></div>
+<div class="grid" style="margin-top:12px"><div><label for="costBps">Estimated round-trip costs (basis points of entry notional)</label><input id="costBps" type="number" min="0" max="5000" step="1" value="0"></div><div class="sub">0 = gross/no-cost sensitivity. Enter your own combined estimate for fees, taxes, spread and slippage; this is not an official fee calculator.</div></div>
+<div class="actions"><button id="backtest">Run historical backtest + holdout</button><button class="secondary" id="clearBacktest">Clear backtest</button></div>
+<p id="backtestStatus" class="sub">Import chronological OHLC candles, set a cost assumption, then run the validation.</p>
+<h2 style="margin-top:18px">Full-history backtest</h2>
+<div class="tablewrap"><table><thead><tr><th>Symbol</th><th>Interval</th><th>Closed trades</th><th>Wins / losses</th><th>Win rate</th><th>Gross R</th><th>Costs R</th><th>Net R</th><th>Expectancy R</th><th>Profit factor</th><th>Max drawdown R</th><th>Skipped</th><th>Open at end</th></tr></thead><tbody id="backtestResults"><tr><td colspan="13" class="muted">No backtest run yet.</td></tr></tbody></table></div>
+<h2 style="margin-top:18px">Chronological 70% / 30% holdout</h2>
+<p class="sub">The first 70% is the development period; the final 30% is held out. Holdout signals may use earlier candles as warm-up, but trades are counted only when the signal occurs inside the holdout. At least 100 bars are required.</p>
+<div class="tablewrap"><table><thead><tr><th>Symbol</th><th>Interval</th><th>Train trades</th><th>Train net R</th><th>Train expectancy R</th><th>Holdout trades</th><th>Holdout net R</th><th>Holdout expectancy R</th><th>Holdout max DD R</th><th>Cost bps</th></tr></thead><tbody id="oosResults"><tr><td colspan="10" class="muted">No holdout validation run yet.</td></tr></tbody></table></div>
 </section>
 <section class="panel">
 <h2>CSV format example</h2>
@@ -130,13 +135,16 @@ function render(){
 function renderBacktest(){
  var candles=rawCandles.filter(function(c){return !contractSymbols||contractSymbols.has(c.symbol)});
  if(!candles.length){$("backtestStatus").textContent="No valid candles to test.";return}
- var results=window.IndiaFnoStrategy.backtestAll(candles);
+ var costBps=Number($("costBps").value);
+ if(!Number.isFinite(costBps)||costBps<0||costBps>5000){$("backtestStatus").textContent="Cost must be a number from 0 to 5000 basis points.";return}
+ var grouped={};candles.forEach(function(c){var k=[c.symbol,c.exchange,c.interval].join("|");(grouped[k]||(grouped[k]=[])).push(c)});
+ var results=Object.keys(grouped).sort().map(function(k){var g=grouped[k].slice().sort(function(a,b){return a.ms-b.ms});return {symbol:g[0].symbol,exchange:g[0].exchange,interval:g[0].interval,candles:g,result:window.IndiaFnoStrategy.backtestHistory(g,{costBpsRoundTrip:costBps}),oos:window.IndiaFnoStrategy.walkForward(g,0.7,costBps)}});
  if(!results.length){$("backtestStatus").textContent="No datasets available.";return}
  var fmt=function(v,d){return v===null||v===undefined?"-":Number.isFinite(v)?v.toFixed(d===undefined?2:d):"-"};
- $("backtestStatus").textContent="Completed "+results.length+" dataset(s). Gross results only; costs and slippage excluded. Use sufficient historical candles and reserve a separate out-of-sample period.";
- $("backtestResults").innerHTML=results.map(function(r){
-  return "<tr><td><b>"+esc(r.symbol)+"</b><br><small>"+esc(r.exchange)+"</small></td><td>"+esc(r.interval)+"m</td><td>"+r.trades.length+"</td><td>"+r.wins+" / "+r.losses+"</td><td>"+fmt(r.winRatePct,1)+"%</td><td>"+fmt(r.netR)+"R</td><td>"+fmt(r.expectancyR)+"R</td><td>"+fmt(r.profitFactor)+"</td><td>"+fmt(r.maxDrawdownR)+"R</td><td>"+r.skipped+"</td><td>"+r.openAtEnd+"</td></tr>";
- }).join("");
+ var validOos=results.filter(function(x){return x.oos.valid}).length;
+ $("backtestStatus").textContent="Completed "+results.length+" dataset(s); "+validOos+" have enough bars for a chronological holdout. Cost assumption: "+costBps+" bps round-trip. Costs are an estimate, not a fee schedule.";
+ $("backtestResults").innerHTML=results.map(function(x){var r=x.result;return "<tr><td><b>"+esc(x.symbol)+"</b><br><small>"+esc(x.exchange)+"</small></td><td>"+esc(x.interval)+"m</td><td>"+r.trades.length+"</td><td>"+r.wins+" / "+r.losses+"</td><td>"+fmt(r.winRatePct,1)+"%</td><td>"+fmt(r.grossR)+"R</td><td>"+fmt(r.totalCostR)+"R</td><td>"+fmt(r.netR)+"R</td><td>"+fmt(r.expectancyR)+"R</td><td>"+fmt(r.profitFactor)+"</td><td>"+fmt(r.maxDrawdownR)+"R</td><td>"+r.skipped+"</td><td>"+r.openAtEnd+"</td></tr>"}).join("");
+ $("oosResults").innerHTML=results.map(function(x){var o=x.oos;if(!o.valid)return "<tr><td><b>"+esc(x.symbol)+"</b><br><small>"+esc(x.exchange)+"</small></td><td>"+esc(x.interval)+"m</td><td colspan=\"8\">Not validated: "+esc(o.reason)+"</td></tr>";return "<tr><td><b>"+esc(x.symbol)+"</b><br><small>"+esc(x.exchange)+"</small></td><td>"+esc(x.interval)+"m</td><td>"+o.train.trades.length+"</td><td>"+fmt(o.train.netR)+"R</td><td>"+fmt(o.train.expectancyR)+"R</td><td>"+o.test.trades.length+"</td><td>"+fmt(o.test.netR)+"R</td><td>"+fmt(o.test.expectancyR)+"R</td><td>"+fmt(o.test.maxDrawdownR)+"R</td><td>"+costBps+"</td></tr>"}).join("");
 }
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 $("contracts").addEventListener("change",function(e){
@@ -157,7 +165,7 @@ $("analyse").addEventListener("click",render);
 $("backtest").addEventListener("click",renderBacktest);
 $("clearBacktest").addEventListener("click",function(){
  $("backtestStatus").textContent="Backtest cleared.";
- $("backtestResults").innerHTML='<tr><td colspan="11" class="muted">No backtest run yet.</td></tr>';
+ $("backtestResults").innerHTML='<tr><td colspan="13" class="muted">No backtest run yet.</td></tr>';$("oosResults").innerHTML='<tr><td colspan="10" class="muted">No holdout validation run yet.</td></tr>';
 });
 $("clear").addEventListener("click",function(){rawCandles=[];contractSymbols=null;$("candles").value="";$("contracts").value="";$("contractState").textContent="No contract master loaded. Symbols from the candle file will be analysed.";$("candleState").textContent="No candle data loaded.";$("symbolsN").textContent="0";$("freshN").textContent="0";$("signalsN").textContent="0";$("status").textContent="Data cleared from this page."; $("results").innerHTML='<tr><td colspan="9" class="muted">Import candles to start.</td></tr>'});
 })();
