@@ -84,7 +84,7 @@ function first(o,names){for(var i=0;i<names.length;i++){if(o[names[i]]!==undefin
 function number(v){var n=Number(v);return Number.isFinite(n)?n:NaN}
 function intervalMinutes(v){
  var s=String(v||"5m").toLowerCase().trim(),m=s.match(/^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hour|hours|d|day|days)$/);
- if(!m)return 5;var n=Number(m[1]),u=m[2];return /^(h|hr|hour|hours)$/.test(u)?n*60:/^(d|day|days)$/.test(u)?n*1440:n;
+ if(!m)return NaN;var n=Number(m[1]),u=m[2];if(!(n>0))return NaN;return /^(h|hr|hour|hours)$/.test(u)?n*60:/^(d|day|days)$/.test(u)?n*1440:n;
 }
 function parseCandles(rows){
  var out=[];
@@ -92,16 +92,18 @@ function parseCandles(rows){
   var sym=String(first(o,["symbol","tradingsymbol","instrument","contract","ticker"])).trim().toUpperCase();
   var ts=String(first(o,["timestamp","datetime","dateandtime","time","date"])).trim();
   var ms=Date.parse(ts);
-  var c={symbol:sym,exchange:String(first(o,["exchange","exch","segment"])).toUpperCase()||"UNKNOWN",
-   ts:ts,ms:ms,interval:intervalMinutes(first(o,["interval","timeframe","period"])||"5m"),
+  var intervalValue=first(o,["interval","timeframe","period"])||"5m";
+  var c={symbol:sym,exchange:String(first(o,["exchange","exch","segment"])).trim().toUpperCase()||"UNKNOWN",
+   ts:ts,ms:ms,interval:intervalMinutes(intervalValue),
    open:number(first(o,["open","o"])),high:number(first(o,["high","h"])),low:number(first(o,["low","l"])),
    close:number(first(o,["close","c"])),volume:number(first(o,["volume","vol","v"])||0)};
-  if(!c.symbol||!Number.isFinite(ms)||![c.open,c.high,c.low,c.close].every(Number.isFinite))return;
+  if(!c.symbol||!Number.isFinite(ms)||!Number.isFinite(c.interval)||c.interval<=0||![c.open,c.high,c.low,c.close].every(Number.isFinite))return;
+  if(!Number.isFinite(c.volume)||c.volume<0)return;
   if(c.high<Math.max(c.open,c.close,c.low)||c.low>Math.min(c.open,c.close,c.high)||c.low<=0||c.close<=0)return;
   out.push(c);
  });
- out.sort(function(a,b){return a.symbol.localeCompare(b.symbol)||a.ms-b.ms});
- var seen={};out=out.filter(function(c){var k=c.symbol+"|"+c.ms;if(seen[k])return false;seen[k]=true;return true});
+ out.sort(function(a,b){return a.symbol.localeCompare(b.symbol)||a.exchange.localeCompare(b.exchange)||a.interval-b.interval||a.ms-b.ms});
+ var seen={};out=out.filter(function(c){var k=c.symbol+"|"+c.exchange+"|"+c.interval+"|"+c.ms;if(seen[k])return false;seen[k]=true;return true});
  return out;
 }
 function round(n){return Number.isFinite(n)?n.toFixed(2):"-"}
@@ -112,9 +114,9 @@ function getSwing(arr,from,to,type){
 function analyse(group){
  var c=group[group.length-1],n=group.length,interval=c.interval,ageMin=(Date.now()-c.ms)/60000;
  var maxAge=interval*2;
- var base={symbol:c.symbol,exchange:c.exchange,ts:c.ts,age:ageMin,fresh:ageMin>=-interval&&ageMin<=maxAge,signal:"NO SIGNAL",reason:"",entry:null,stop:null,target:null};
+ var base={symbol:c.symbol,exchange:c.exchange,ts:c.ts,age:ageMin,fresh:ageMin>=0&&ageMin<=maxAge,signal:"NO SIGNAL",reason:"",entry:null,stop:null,target:null};
  if(n<30){base.reason="Need at least 30 candles; got "+n;return base}
- if(!base.fresh){base.reason=ageMin< -interval?"Future timestamp rejected":"Stale data ("+Math.max(0,Math.round(ageMin))+" min old; limit "+maxAge+" min)";return base}
+ if(!base.fresh){base.reason=ageMin<0?"Future timestamp rejected":"Stale data ("+Math.round(ageMin)+" min old; limit "+maxAge+" min)";return base}
  var recent=group.slice(-21,-1),prev=group[n-2],swingHigh=getSwing(group,n-21,n-1,"high"),swingLow=getSwing(group,n-21,n-1,"low");
  var priorHigh=getSwing(group,n-8,n-2,"high"),priorLow=getSwing(group,n-8,n-2,"low");
  var bullishSweep=prev.low<priorLow&&c.close>priorLow;
@@ -138,7 +140,7 @@ function analyse(group){
  return base;
 }
 function render(){
- var grouped={};rawCandles.forEach(function(c){if(contractSymbols&& !contractSymbols.has(c.symbol))return;(grouped[c.symbol]||(grouped[c.symbol]=[])).push(c)});
+ var grouped={};rawCandles.forEach(function(c){if(contractSymbols&& !contractSymbols.has(c.symbol))return;var key=[c.symbol,c.exchange,c.interval].join("|");(grouped[key]||(grouped[key]=[])).push(c)});
  var keys=Object.keys(grouped),out=keys.map(function(k){return analyse(grouped[k])}).sort(function(a,b){return (a.signal==="NO SIGNAL")-(b.signal==="NO SIGNAL")||a.symbol.localeCompare(b.symbol)});
  var fresh=out.filter(function(x){return x.fresh}).length,action=out.filter(function(x){return x.signal!=="NO SIGNAL"}).length;
  $("symbolsN").textContent=keys.length;$("freshN").textContent=fresh;$("signalsN").textContent=action;
@@ -160,7 +162,7 @@ $("contracts").addEventListener("change",function(e){
 $("candles").addEventListener("change",function(e){
  var f=e.target.files[0];if(!f)return;
  f.text().then(function(t){var rows=parseCSV(t);rawCandles=parseCandles(rows);if(!rawCandles.length)throw Error("No valid OHLC rows. Check timestamp and OHLC headers.");
- $("candleState").textContent=rawCandles.length+" valid candle rows loaded from "+f.name+". Latest: "+rawCandles[rawCandles.length-1].ts;
+ $("candleState").textContent=rawCandles.length+" valid candle rows loaded from "+f.name+". Invalid rows, duplicate candles and invalid intervals were rejected.";
  $("status").textContent="Data loaded. Press Analyse signals.";render();
  }).catch(function(err){rawCandles=[];$("candleState").textContent="Could not load candles: "+err.message;render()});
 });
