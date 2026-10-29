@@ -28,6 +28,7 @@ class IndiaFnoDashboardTests(unittest.TestCase):
         self.assertIn('if(!base.fresh)', page)
         self.assertIn('signal:"NO SIGNAL"', page)
         self.assertIn("fresh:ageMin>=0&&ageMin<=maxAge", page)
+        self.assertIn('x.age<0?"FUTURE TIMESTAMP"', page)
         self.assertIn('ageMin<0?"Future timestamp rejected"', page)
 
     def test_candles_are_partitioned_by_symbol_exchange_and_interval(self):
