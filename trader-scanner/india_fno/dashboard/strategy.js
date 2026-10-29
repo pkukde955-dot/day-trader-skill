@@ -115,5 +115,127 @@
     return results;
   }
 
-  return { analyse: analyse, scanHistory: scanHistory, getSwing: getSwing };
+  function backtestHistory(candles) {
+    var trades = [];
+    var skipped = 0;
+    var openAtEnd = 0;
+    var signalCount = 0;
+    var equityR = 0;
+    var peakR = 0;
+    var maxDrawdownR = 0;
+    if (!Array.isArray(candles) || candles.length < 30) {
+      return { bars: Array.isArray(candles) ? candles.length : 0, trades: trades,
+        signals: 0, skipped: 0, openAtEnd: 0, wins: 0, losses: 0,
+        winRatePct: null, netR: 0, expectancyR: null, profitFactor: null,
+        maxDrawdownR: 0, costsIncluded: false };
+    }
+
+    var i = 29;
+    while (i < candles.length - 1) {
+      var prefix = candles.slice(0, i + 1);
+      var bar = candles[i];
+      var signal = analyse(prefix, bar.ms + Number(bar.interval) * 60000);
+      if (signal.signal !== "BUY" && signal.signal !== "SELL") {
+        i++;
+        continue;
+      }
+      signalCount++;
+      var entryBar = candles[i + 1];
+      var entry = Number(entryBar.open);
+      var isLong = signal.signal === "BUY";
+      var stop = Number(signal.stop);
+      var target = Number(signal.target);
+      var validGeometry = Number.isFinite(entry) && Number.isFinite(stop) &&
+        Number.isFinite(target) && (isLong ? stop < entry && entry < target : target < entry && entry < stop);
+      if (!validGeometry) {
+        skipped++;
+        i++;
+        continue;
+      }
+
+      var risk = Math.abs(entry - stop);
+      var exitPrice = null;
+      var exitReason = "";
+      var exitIndex = -1;
+      for (var j = i + 1; j < candles.length; j++) {
+        var futureBar = candles[j];
+        var open = Number(futureBar.open);
+        var high = Number(futureBar.high);
+        var low = Number(futureBar.low);
+        if (![open, high, low].every(Number.isFinite)) continue;
+
+        if (isLong && open >= target) {
+          exitPrice = target; exitReason = "TARGET_GAP"; exitIndex = j; break;
+        }
+        if (!isLong && open <= target) {
+          exitPrice = target; exitReason = "TARGET_GAP"; exitIndex = j; break;
+        }
+        if (isLong && open <= stop) {
+          exitPrice = open; exitReason = "STOP_GAP"; exitIndex = j; break;
+        }
+        if (!isLong && open >= stop) {
+          exitPrice = open; exitReason = "STOP_GAP"; exitIndex = j; break;
+        }
+
+        var stopTouched = isLong ? low <= stop : high >= stop;
+        var targetTouched = isLong ? high >= target : low <= target;
+        if (stopTouched && targetTouched) {
+          exitPrice = stop; exitReason = "STOP_AND_TARGET_SAME_BAR_STOP_FIRST"; exitIndex = j; break;
+        }
+        if (stopTouched) {
+          exitPrice = stop; exitReason = "STOP"; exitIndex = j; break;
+        }
+        if (targetTouched) {
+          exitPrice = target; exitReason = "TARGET"; exitIndex = j; break;
+        }
+      }
+
+      if (exitIndex < 0) {
+        openAtEnd++;
+        break;
+      }
+      var pnl = isLong ? exitPrice - entry : entry - exitPrice;
+      var rMultiple = pnl / risk;
+      trades.push({
+        signalIndex: i, entryIndex: i + 1, exitIndex: exitIndex,
+        side: signal.signal, entry: entry, stop: stop, target: target,
+        exit: exitPrice, exitReason: exitReason, r: rMultiple
+      });
+      equityR += rMultiple;
+      peakR = Math.max(peakR, equityR);
+      maxDrawdownR = Math.max(maxDrawdownR, peakR - equityR);
+      i = exitIndex + 1;
+    }
+
+    var wins = trades.filter(function (t) { return t.r > 0; }).length;
+    var losses = trades.filter(function (t) { return t.r < 0; }).length;
+    var grossWinsR = trades.reduce(function (sum, t) { return sum + (t.r > 0 ? t.r : 0); }, 0);
+    var grossLossesR = trades.reduce(function (sum, t) { return sum + (t.r < 0 ? -t.r : 0); }, 0);
+    return {
+      bars: candles.length, trades: trades, signals: signalCount, skipped: skipped,
+      openAtEnd: openAtEnd, wins: wins, losses: losses,
+      winRatePct: trades.length ? (wins / trades.length) * 100 : null,
+      netR: equityR, expectancyR: trades.length ? equityR / trades.length : null,
+      profitFactor: grossLossesR ? grossWinsR / grossLossesR : (grossWinsR ? null : 0),
+      maxDrawdownR: maxDrawdownR, costsIncluded: false
+    };
+  }
+
+  function backtestAll(candles) {
+    var grouped = {};
+    (Array.isArray(candles) ? candles : []).forEach(function (c) {
+      var key = [c.symbol, c.exchange, c.interval].join("|");
+      (grouped[key] || (grouped[key] = [])).push(c);
+    });
+    return Object.keys(grouped).sort().map(function (key) {
+      var group = grouped[key].slice().sort(function (a, b) { return a.ms - b.ms; });
+      var result = backtestHistory(group);
+      result.symbol = group[0].symbol;
+      result.exchange = group[0].exchange;
+      result.interval = group[0].interval;
+      return result;
+    });
+  }
+
+  return { analyse: analyse, scanHistory: scanHistory, backtestHistory: backtestHistory, backtestAll: backtestAll, getSwing: getSwing };
 });
