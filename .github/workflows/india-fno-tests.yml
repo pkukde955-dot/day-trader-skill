@@ -12,6 +12,7 @@ on:
       - "fix/india-fno-data-validation-2026-10-29"
       - "fix/india-fno-probe-freshness-2026-10-29"
       - "feat/india-fno-cost-oos-validation-2026-10-29"
+      - "feat/india-fno-csv-audit-2026-10-29"
     paths:
       - "trader-scanner/india_fno/**"
       - "tests/test_india_fno_*.py"
