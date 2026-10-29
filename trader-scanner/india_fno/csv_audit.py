@@ -89,6 +89,13 @@ def audit_rows(rows, min_bars=100):
         interval_value = str(values["interval"]).strip() or "5m"
         interval = _interval_minutes(interval_value)
         timestamp, naive = _parse_timestamp(values["timestamp"])
+        # Normalize comparisons to UTC. Naive timestamps are provisionally
+        # interpreted as UTC but remain counted/warned as timezone-naive.
+        if timestamp is not None:
+            if naive:
+                timestamp = timestamp.replace(tzinfo=dt.timezone.utc)
+            else:
+                timestamp = timestamp.astimezone(dt.timezone.utc)
         ohlc = {name: _number(values[name]) for name in ("open", "high", "low", "close")}
         volume = _number(values["volume"]) if str(values["volume"]).strip() else 0.0
 
