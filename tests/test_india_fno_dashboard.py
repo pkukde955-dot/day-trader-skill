@@ -27,6 +27,19 @@ class IndiaFnoDashboardTests(unittest.TestCase):
         self.assertIn("var maxAge=interval*2", page)
         self.assertIn('if(!base.fresh)', page)
         self.assertIn('signal:"NO SIGNAL"', page)
+        self.assertIn("fresh:ageMin>=0&&ageMin<=maxAge", page)
+        self.assertIn('ageMin<0?"Future timestamp rejected"', page)
+
+    def test_candles_are_partitioned_by_symbol_exchange_and_interval(self):
+        page = HTML.read_text(encoding="utf-8")
+        self.assertIn('[c.symbol,c.exchange,c.interval].join("|")', page)
+        self.assertIn('c.symbol+"|"+c.exchange+"|"+c.interval+"|"+c.ms', page)
+
+    def test_invalid_intervals_and_negative_volume_are_rejected(self):
+        page = HTML.read_text(encoding="utf-8")
+        self.assertIn("if(!m)return NaN", page)
+        self.assertIn("!Number.isFinite(c.interval)", page)
+        self.assertIn("c.volume<0", page)
 
     def test_server_binds_to_loopback_only(self):
         server = SERVER.read_text(encoding="utf-8")
