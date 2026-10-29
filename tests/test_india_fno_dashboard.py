@@ -34,6 +34,16 @@ class IndiaFnoDashboardTests(unittest.TestCase):
         self.assertIn('ageMin >= 0 && ageMin <= maxAge', strategy)
         self.assertIn('Future timestamp rejected', strategy)
 
+    def test_dashboard_exposes_historical_backtest_with_cost_warning(self):
+        page = HTML.read_text(encoding="utf-8")
+        strategy = STRATEGY.read_text(encoding="utf-8")
+        self.assertIn('id="backtest"', page)
+        self.assertIn('id="backtestResults"', page)
+        self.assertIn("slippage are NOT included", page)
+        self.assertIn("function backtestHistory(candles)", strategy)
+        self.assertIn("STOP_AND_TARGET_SAME_BAR_STOP_FIRST", strategy)
+        self.assertIn("function backtestAll(candles)", strategy)
+
     def test_candles_are_partitioned_by_symbol_exchange_and_interval(self):
         page = HTML.read_text(encoding="utf-8")
         self.assertIn('[c.symbol,c.exchange,c.interval].join("|")', page)
