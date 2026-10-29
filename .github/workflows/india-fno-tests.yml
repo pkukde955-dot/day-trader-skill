@@ -30,3 +30,5 @@ jobs:
       - name: Run India F&O read-only tests
         run: |
           python -m unittest discover -s tests -p 'test_india_fno_*.py' -v
+      - name: Run strategy and no-lookahead tests
+        run: node --test tests/test_india_fno_strategy.js
