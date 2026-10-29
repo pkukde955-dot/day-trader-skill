@@ -5,6 +5,7 @@ on:
     paths:
       - "trader-scanner/india_fno/**"
       - "tests/test_india_fno_*.py"
+      - "tests/test_india_fno_strategy.js"
       - ".github/workflows/india-fno-tests.yml"
   push:
     branches:
