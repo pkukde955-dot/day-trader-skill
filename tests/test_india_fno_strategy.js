@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { analyse, scanHistory, backtestHistory } = require("../trader-scanner/india_fno/dashboard/strategy.js");
+const { analyse, scanHistory, backtestHistory, walkForward } = require("../trader-scanner/india_fno/dashboard/strategy.js");
 
 function candlesWithBullishBreak() {
   const start = 1_790_000_000_000;
@@ -108,4 +108,53 @@ test("same-bar stop and target collision resolves conservatively to stop", () =>
 
 test("history shorter than 30 candles produces no backtest signals", () => {
   assert.deepEqual(scanHistory(candlesWithBullishBreak().slice(0, 29)), []);
+});
+
+test("round-trip cost assumption reduces net R and is exposed per trade", () => {
+  const rows = candlesWithBullishBreak();
+  const step = 300000;
+  rows.push({
+    symbol: "NIFTY", exchange: "NSE", interval: 5,
+    ts: new Date(rows.at(-1).ms + step).toISOString(), ms: rows.at(-1).ms + step,
+    open: 105, high: 106, low: 104, close: 105, volume: 100
+  });
+  rows.push({
+    symbol: "NIFTY", exchange: "NSE", interval: 5,
+    ts: new Date(rows.at(-1).ms + step).toISOString(), ms: rows.at(-1).ms + step,
+    open: 105, high: 117, low: 104, close: 116, volume: 100
+  });
+  const gross = backtestHistory(rows);
+  const withCosts = backtestHistory(rows, { costBpsRoundTrip: 100 });
+  assert.equal(gross.trades.length, 1);
+  assert.equal(withCosts.costsIncluded, true);
+  assert.ok(withCosts.trades[0].costR > 0);
+  assert.ok(withCosts.trades[0].r < gross.trades[0].r);
+  assert.ok(withCosts.netR < withCosts.grossR);
+  assert.equal(withCosts.costBpsRoundTrip, 100);
+});
+
+test("holdout validation requires enough history and uses chronological signal boundaries", () => {
+  const tooShort = walkForward(candlesWithBullishBreak(), 0.7, 0);
+  assert.equal(tooShort.valid, false);
+  assert.match(tooShort.reason, /at least 100/);
+
+  const rows = [];
+  const start = 1_790_000_000_000;
+  for (let i = 0; i < 120; i++) {
+    rows.push({
+      symbol: "NIFTY", exchange: "NSE", interval: 5,
+      ts: new Date(start + i * 300000).toISOString(),
+      ms: start + i * 300000,
+      open: 100, high: 100.5, low: 99.5, close: 100, volume: 100
+    });
+  }
+  const split = walkForward(rows, 0.7, 25);
+  assert.equal(split.valid, true);
+  assert.equal(split.splitIndex, 84);
+  assert.equal(split.trainBars, 84);
+  assert.equal(split.testBars, 36);
+  assert.equal(split.train.costBpsRoundTrip, 25);
+  assert.equal(split.test.costBpsRoundTrip, 25);
+  assert.ok(split.test.trades.every((trade) => trade.signalIndex >= split.splitIndex));
+  assert.ok(split.test.trades.every((trade) => trade.exitIndex < rows.length));
 });
