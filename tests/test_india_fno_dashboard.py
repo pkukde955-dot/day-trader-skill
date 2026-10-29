@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD = ROOT / "trader-scanner" / "india_fno" / "dashboard"
 HTML = DASHBOARD / "index.html"
+STRATEGY = DASHBOARD / "strategy.js"
 SERVER = DASHBOARD / "server.py"
 LAUNCHER = ROOT / "trader-scanner" / "india_fno" / "start_dashboard.sh"
 
@@ -12,6 +13,7 @@ LAUNCHER = ROOT / "trader-scanner" / "india_fno" / "start_dashboard.sh"
 class IndiaFnoDashboardTests(unittest.TestCase):
     def test_dashboard_assets_exist(self):
         self.assertTrue(HTML.is_file())
+        self.assertTrue(STRATEGY.is_file())
         self.assertTrue(SERVER.is_file())
         self.assertTrue(LAUNCHER.is_file())
 
@@ -24,12 +26,13 @@ class IndiaFnoDashboardTests(unittest.TestCase):
 
     def test_stale_data_is_rejected_before_signal(self):
         page = HTML.read_text(encoding="utf-8")
-        self.assertIn("var maxAge=interval*2", page)
-        self.assertIn('if(!base.fresh)', page)
-        self.assertIn('signal:"NO SIGNAL"', page)
-        self.assertIn("fresh:ageMin>=0&&ageMin<=maxAge", page)
-        self.assertIn('x.age<0?"FUTURE TIMESTAMP"', page)
-        self.assertIn('ageMin<0?"Future timestamp rejected"', page)
+        strategy = STRATEGY.read_text(encoding="utf-8")
+        self.assertIn('window.IndiaFnoStrategy.analyse', page)
+        self.assertIn('var maxAge = interval * 2', strategy)
+        self.assertIn('if (!base.fresh)', strategy)
+        self.assertIn('signal: "NO SIGNAL"', strategy)
+        self.assertIn('ageMin >= 0 && ageMin <= maxAge', strategy)
+        self.assertIn('Future timestamp rejected', strategy)
 
     def test_candles_are_partitioned_by_symbol_exchange_and_interval(self):
         page = HTML.read_text(encoding="utf-8")
