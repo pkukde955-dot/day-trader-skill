@@ -53,7 +53,7 @@ small{color:var(--muted)}footer{max-width:1120px;margin:0 auto;padding:0 14px 24
 </section>
 <section class="panel">
 <h2>Historical validation (CSV backtest)</h2>
-<div class="notice">Simulation assumptions: signal at candle close, entry at the next candle open, one position per symbol/timeframe, and stop-first if stop and target are touched in the same candle. Open trades at the end of the file are excluded from closed-trade metrics. Brokerage, taxes, spread and slippage are NOT included. Results are historical diagnostics, not evidence of future profitability.</div>
+<div class="notice">Simulation assumptions: signal at candle close, entry at the next candle open, one position per symbol/timeframe, and stop-first if stop and target are touched in the same candle. Open trades at the end of the file are excluded from closed-trade metrics. Cost deduction is a user-entered sensitivity estimate (default 0 bps), not a fee calculator; it does not simulate slippage or realistic fills. Results are historical diagnostics, not evidence of future profitability.</div>
 <div class="grid" style="margin-top:12px"><div><label for="costBps">Estimated round-trip costs (basis points of entry notional)</label><input id="costBps" type="number" min="0" max="5000" step="1" value="0"></div><div class="sub">0 = gross/no-cost sensitivity. Enter your own combined estimate for fees, taxes, spread and slippage; this is not an official fee calculator.</div></div>
 <div class="actions"><button id="backtest">Run historical backtest + holdout</button><button class="secondary" id="clearBacktest">Clear backtest</button></div>
 <p id="backtestStatus" class="sub">Import chronological OHLC candles, set a cost assumption, then run the validation.</p>
