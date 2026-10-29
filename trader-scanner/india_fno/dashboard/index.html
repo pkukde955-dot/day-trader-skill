@@ -52,6 +52,13 @@ small{color:var(--muted)}footer{max-width:1120px;margin:0 auto;padding:0 14px 24
 <div class="tablewrap"><table><thead><tr><th>Symbol</th><th>Exchange</th><th>Data time</th><th>Freshness</th><th>Bias / signal</th><th>Setup reason</th><th>Entry ref.</th><th>Stop ref.</th><th>Target ref. (2R)</th></tr></thead><tbody id="results"><tr><td colspan="9" class="muted">Import candles to start.</td></tr></tbody></table></div>
 </section>
 <section class="panel">
+<h2>Historical validation (CSV backtest)</h2>
+<div class="notice">Simulation assumptions: signal at candle close, entry at the next candle open, one position per symbol/timeframe, and stop-first if stop and target are touched in the same candle. Open trades at the end of the file are excluded from closed-trade metrics. Brokerage, taxes, spread and slippage are NOT included. Results are historical diagnostics, not evidence of future profitability.</div>
+<div class="actions"><button id="backtest">Run historical backtest</button><button class="secondary" id="clearBacktest">Clear backtest</button></div>
+<p id="backtestStatus" class="sub">Import chronological OHLC candles, then run the backtest.</p>
+<div class="tablewrap"><table><thead><tr><th>Symbol</th><th>Interval</th><th>Closed trades</th><th>Wins / losses</th><th>Win rate</th><th>Net R</th><th>Expectancy R</th><th>Profit factor</th><th>Max drawdown R</th><th>Skipped</th><th>Open at end</th></tr></thead><tbody id="backtestResults"><tr><td colspan="11" class="muted">No backtest run yet.</td></tr></tbody></table></div>
+</section>
+<section class="panel">
 <h2>CSV format example</h2>
 <pre style="white-space:pre-wrap;overflow-wrap:anywhere;color:#c9d7ec;font-size:12px">timestamp,symbol,open,high,low,close,volume,interval,exchange
 2026-10-26T09:15:00+05:30,NIFTY26OCT25000CE,110,116,105,113,1200,5m,NSE</pre>
@@ -120,6 +127,17 @@ function render(){
   return "<tr><td><b>"+esc(x.symbol)+"</b></td><td>"+esc(x.exchange)+"</td><td>"+esc(x.ts)+"</td><td class='"+(x.fresh?"ok":"bad")+"'>"+(x.fresh?"FRESH":x.age<0?"FUTURE TIMESTAMP":Math.round(x.age)+" min old")+"</td><td class='"+cls+"'><b>"+x.signal+"</b></td><td>"+esc(x.reason)+"</td><td>"+round(x.entry)+"</td><td>"+round(x.stop)+"</td><td>"+round(x.target)+"</td></tr>"
  }).join("");
 }
+function renderBacktest(){
+ var candles=rawCandles.filter(function(c){return !contractSymbols||contractSymbols.has(c.symbol)});
+ if(!candles.length){$("backtestStatus").textContent="No valid candles to test.";return}
+ var results=window.IndiaFnoStrategy.backtestAll(candles);
+ if(!results.length){$("backtestStatus").textContent="No datasets available.";return}
+ var fmt=function(v,d){return v===null||v===undefined?"-":Number.isFinite(v)?v.toFixed(d===undefined?2:d):"-"};
+ $("backtestStatus").textContent="Completed "+results.length+" dataset(s). Gross results only; costs and slippage excluded. Use sufficient historical candles and reserve a separate out-of-sample period.";
+ $("backtestResults").innerHTML=results.map(function(r){
+  return "<tr><td><b>"+esc(r.symbol)+"</b><br><small>"+esc(r.exchange)+"</small></td><td>"+esc(r.interval)+"m</td><td>"+r.trades.length+"</td><td>"+r.wins+" / "+r.losses+"</td><td>"+fmt(r.winRatePct,1)+"%</td><td>"+fmt(r.netR)+"R</td><td>"+fmt(r.expectancyR)+"R</td><td>"+fmt(r.profitFactor)+"</td><td>"+fmt(r.maxDrawdownR)+"R</td><td>"+r.skipped+"</td><td>"+r.openAtEnd+"</td></tr>";
+ }).join("");
+}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 $("contracts").addEventListener("change",function(e){
  var f=e.target.files[0];if(!f)return;
@@ -136,6 +154,11 @@ $("candles").addEventListener("change",function(e){
  }).catch(function(err){rawCandles=[];$("candleState").textContent="Could not load candles: "+err.message;render()});
 });
 $("analyse").addEventListener("click",render);
+$("backtest").addEventListener("click",renderBacktest);
+$("clearBacktest").addEventListener("click",function(){
+ $("backtestStatus").textContent="Backtest cleared.";
+ $("backtestResults").innerHTML='<tr><td colspan="11" class="muted">No backtest run yet.</td></tr>';
+});
 $("clear").addEventListener("click",function(){rawCandles=[];contractSymbols=null;$("candles").value="";$("contracts").value="";$("contractState").textContent="No contract master loaded. Symbols from the candle file will be analysed.";$("candleState").textContent="No candle data loaded.";$("symbolsN").textContent="0";$("freshN").textContent="0";$("signalsN").textContent="0";$("status").textContent="Data cleared from this page."; $("results").innerHTML='<tr><td colspan="9" class="muted">Import candles to start.</td></tr>'});
 })();
 </script>
