@@ -115,23 +115,30 @@
     return results;
   }
 
-  function backtestHistory(candles) {
+  function backtestHistory(candles, options) {
+    options = options || {};
     var trades = [];
     var skipped = 0;
     var openAtEnd = 0;
     var signalCount = 0;
     var equityR = 0;
+    var grossRTotal = 0;
+    var totalCostR = 0;
     var peakR = 0;
     var maxDrawdownR = 0;
-    if (!Array.isArray(candles) || candles.length < 30) {
-      return { bars: Array.isArray(candles) ? candles.length : 0, trades: trades,
-        signals: 0, skipped: 0, openAtEnd: 0, wins: 0, losses: 0,
-        winRatePct: null, netR: 0, expectancyR: null, profitFactor: null,
-        maxDrawdownR: 0, costsIncluded: false };
-    }
+    var n = Array.isArray(candles) ? candles.length : 0;
+    var startIndex = Number.isFinite(Number(options.startIndex)) ? Math.max(29, Math.floor(Number(options.startIndex))) : 29;
+    var endIndex = Number.isFinite(Number(options.endIndex)) ? Math.min(n - 1, Math.floor(Number(options.endIndex))) : n - 1;
+    var costBpsRoundTrip = Number(options.costBpsRoundTrip);
+    if (!Number.isFinite(costBpsRoundTrip) || costBpsRoundTrip < 0) costBpsRoundTrip = 0;
+    var empty = { bars: n, trades: trades, signals: 0, skipped: 0, openAtEnd: 0,
+      wins: 0, losses: 0, winRatePct: null, netR: 0, grossR: 0, totalCostR: 0,
+      expectancyR: null, profitFactor: 0, maxDrawdownR: 0,
+      costsIncluded: costBpsRoundTrip > 0, costBpsRoundTrip: costBpsRoundTrip };
+    if (!Array.isArray(candles) || n < 30 || startIndex > endIndex || endIndex < 30) return empty;
 
-    var i = 29;
-    while (i < candles.length - 1) {
+    var i = startIndex;
+    while (i < Math.min(n - 1, endIndex)) {
       var prefix = candles.slice(0, i + 1);
       var bar = candles[i];
       var signal = analyse(prefix, bar.ms + Number(bar.interval) * 60000);
@@ -157,7 +164,7 @@
       var exitPrice = null;
       var exitReason = "";
       var exitIndex = -1;
-      for (var j = i + 1; j < candles.length; j++) {
+      for (var j = i + 1; j <= endIndex; j++) {
         var futureBar = candles[j];
         var open = Number(futureBar.open);
         var high = Number(futureBar.high);
@@ -195,13 +202,20 @@
         break;
       }
       var pnl = isLong ? exitPrice - entry : entry - exitPrice;
-      var rMultiple = pnl / risk;
+      var grossTradeR = pnl / risk;
+      // User-supplied round-trip cost assumption, expressed in basis points of
+      // entry notional. This is a sensitivity estimate, not a fee schedule.
+      var costR = (entry * costBpsRoundTrip / 10000) / risk;
+      var netTradeR = grossTradeR - costR;
       trades.push({
         signalIndex: i, entryIndex: i + 1, exitIndex: exitIndex,
         side: signal.signal, entry: entry, stop: stop, target: target,
-        exit: exitPrice, exitReason: exitReason, r: rMultiple
+        exit: exitPrice, exitReason: exitReason, grossR: grossTradeR,
+        costR: costR, r: netTradeR
       });
-      equityR += rMultiple;
+      grossRTotal += grossTradeR;
+      totalCostR += costR;
+      equityR += netTradeR;
       peakR = Math.max(peakR, equityR);
       maxDrawdownR = Math.max(maxDrawdownR, peakR - equityR);
       i = exitIndex + 1;
@@ -215,10 +229,28 @@
       bars: candles.length, trades: trades, signals: signalCount, skipped: skipped,
       openAtEnd: openAtEnd, wins: wins, losses: losses,
       winRatePct: trades.length ? (wins / trades.length) * 100 : null,
-      netR: equityR, expectancyR: trades.length ? equityR / trades.length : null,
+      netR: equityR, grossR: grossRTotal, totalCostR: totalCostR,
+      expectancyR: trades.length ? equityR / trades.length : null,
       profitFactor: grossLossesR ? grossWinsR / grossLossesR : (grossWinsR ? null : 0),
-      maxDrawdownR: maxDrawdownR, costsIncluded: false
+      maxDrawdownR: maxDrawdownR, costsIncluded: costBpsRoundTrip > 0,
+      costBpsRoundTrip: costBpsRoundTrip
     };
+  }
+
+  // Chronological holdout validation: the test period may use earlier candles
+  // as signal warm-up, but only signals from the test period count as test trades.
+  function walkForward(candles, trainFraction, costBpsRoundTrip) {
+    var rows = Array.isArray(candles) ? candles : [];
+    var fraction = Number(trainFraction);
+    if (!Number.isFinite(fraction) || fraction <= 0.5 || fraction >= 0.9) fraction = 0.7;
+    var splitIndex = Math.floor(rows.length * fraction);
+    if (rows.length < 100 || splitIndex < 30 || rows.length - splitIndex < 30) {
+      return { valid: false, reason: "Need at least 100 chronological candles so both train and holdout periods have at least 30 bars.", bars: rows.length, splitIndex: splitIndex };
+    }
+    var train = backtestHistory(rows, { startIndex: 29, endIndex: splitIndex - 1, costBpsRoundTrip: costBpsRoundTrip });
+    var test = backtestHistory(rows, { startIndex: splitIndex, endIndex: rows.length - 1, costBpsRoundTrip: costBpsRoundTrip });
+    return { valid: true, bars: rows.length, splitIndex: splitIndex, trainFraction: fraction,
+      trainBars: splitIndex, testBars: rows.length - splitIndex, train: train, test: test };
   }
 
   function backtestAll(candles) {
@@ -237,5 +269,5 @@
     });
   }
 
-  return { analyse: analyse, scanHistory: scanHistory, backtestHistory: backtestHistory, backtestAll: backtestAll, getSwing: getSwing };
+  return { analyse: analyse, scanHistory: scanHistory, backtestHistory: backtestHistory, walkForward: walkForward, backtestAll: backtestAll, getSwing: getSwing };
 });
