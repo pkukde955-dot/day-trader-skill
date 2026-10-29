@@ -105,7 +105,7 @@ def parse_chart(payload, now_epoch=None, max_age_seconds=900, future_tolerance_s
         "timestamp_close_series_aligned": aligned,
         "last_bar_utc": last_time,
         "currency": meta.get("currency"),
-        "error": None if ok else "No valid timestamp/close pairs",
+        "error": None if ok else ("No valid close values" if not valid_closes else "No valid timestamp/close pairs"),
     }
 
 def probe_chart(symbol, timeout=8):
