@@ -148,7 +148,7 @@ function render(){
  if(!out.length){$("results").innerHTML='<tr><td colspan="9" class="muted">No matching contracts. Check contract master symbol names.</td></tr>';return}
  $("results").innerHTML=out.map(function(x){
   var cls=x.signal==="BUY"?"buy":x.signal==="SELL"?"sell":"wait";
-  return "<tr><td><b>"+esc(x.symbol)+"</b></td><td>"+esc(x.exchange)+"</td><td>"+esc(x.ts)+"</td><td class='"+(x.fresh?"ok":"bad")+"'>"+(x.fresh?"FRESH":Math.max(0,Math.round(x.age))+" min old")+"</td><td class='"+cls+"'><b>"+x.signal+"</b></td><td>"+esc(x.reason)+"</td><td>"+round(x.entry)+"</td><td>"+round(x.stop)+"</td><td>"+round(x.target)+"</td></tr>"
+  return "<tr><td><b>"+esc(x.symbol)+"</b></td><td>"+esc(x.exchange)+"</td><td>"+esc(x.ts)+"</td><td class='"+(x.fresh?"ok":"bad")+"'>"+(x.fresh?"FRESH":x.age<0?"FUTURE TIMESTAMP":Math.round(x.age)+" min old")+"</td><td class='"+cls+"'><b>"+x.signal+"</b></td><td>"+esc(x.reason)+"</td><td>"+round(x.entry)+"</td><td>"+round(x.stop)+"</td><td>"+round(x.target)+"</td></tr>"
  }).join("");
 }
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
