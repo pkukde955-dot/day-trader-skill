@@ -25,37 +25,88 @@ def fetch_json(url, timeout=8):
         return json.loads(response.read().decode("utf-8"))
 
 
-def parse_chart(payload):
-    """Return a small, safe summary of Yahoo chart JSON."""
+def parse_chart(payload, now_epoch=None, max_age_seconds=900, future_tolerance_seconds=60):
+    """Summarize chart data and separately assess timestamp freshness.
+
+    ok means the response contains usable numeric closes; it does not mean
+    the data is fresh, licensed, complete, or suitable for trading. Time inputs
+    are injectable so freshness checks can be tested deterministically.
+    """
+    import math
+
     chart = payload.get("chart") or {}
     error = chart.get("error")
     results = chart.get("result") or []
     if error:
-        return {"ok": False, "error": error.get("description") or error.get("code") or "chart error"}
+        return {"ok": False, "fresh": False,
+                "error": error.get("description") or error.get("code") or "chart error"}
     if not results:
-        return {"ok": False, "error": "No chart result"}
+        return {"ok": False, "fresh": False, "error": "No chart result"}
+
     item = results[0]
     timestamps = item.get("timestamp") or []
     indicators = item.get("indicators") or {}
     quote_list = indicators.get("quote") or []
     quote = quote_list[0] if quote_list else {}
     closes = quote.get("close") or []
-    valid = [value for value in closes if isinstance(value, (int, float))]
     meta = item.get("meta") or {}
-    last_epoch = timestamps[-1] if timestamps else None
-    last_time = dt.datetime.fromtimestamp(last_epoch, dt.timezone.utc).isoformat() if last_epoch else None
+
+    valid_closes = [
+        value for value in closes
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        and math.isfinite(value)
+    ]
+    aligned = len(timestamps) == len(closes)
+    valid_pairs = []
+    for epoch, close in zip(timestamps, closes):
+        if (isinstance(epoch, (int, float)) and not isinstance(epoch, bool)
+                and math.isfinite(epoch)
+                and isinstance(close, (int, float)) and not isinstance(close, bool)
+                and math.isfinite(close)):
+            valid_pairs.append((float(epoch), float(close)))
+
+    latest_epoch = max((pair[0] for pair in valid_pairs), default=None)
+    last_time = None
+    age_seconds = None
+    freshness = "UNKNOWN"
+    fresh = False
+    if latest_epoch is not None:
+        try:
+            last_time = dt.datetime.fromtimestamp(
+                latest_epoch, dt.timezone.utc
+            ).isoformat()
+            now_value = dt.datetime.now(dt.timezone.utc).timestamp() if now_epoch is None else float(now_epoch)
+            age_seconds = now_value - latest_epoch
+            if age_seconds < -future_tolerance_seconds:
+                freshness = "FUTURE"
+            elif age_seconds > max_age_seconds:
+                freshness = "STALE"
+            elif not aligned:
+                freshness = "MISALIGNED"
+            else:
+                freshness = "FRESH"
+                fresh = True
+        except (OverflowError, OSError, TypeError, ValueError):
+            freshness = "INVALID_TIMESTAMP"
+            last_time = None
+            age_seconds = None
+
+    ok = bool(valid_closes and valid_pairs)
     return {
-        "ok": bool(valid),
+        "ok": ok,
+        "fresh": bool(ok and fresh),
+        "freshness": freshness,
+        "age_seconds": round(age_seconds, 1) if age_seconds is not None else None,
         "symbol": meta.get("symbol"),
         "exchange": meta.get("exchangeName"),
         "instrument_type": meta.get("instrumentType"),
         "interval_bars_returned": len(timestamps),
-        "valid_closes": len(valid),
+        "valid_closes": len(valid_closes),
+        "timestamp_close_series_aligned": aligned,
         "last_bar_utc": last_time,
         "currency": meta.get("currency"),
-        "error": None if valid else "No valid close values",
+        "error": None if ok else ("No valid close values" if not valid_closes else "No valid timestamp/close pairs"),
     }
-
 
 def probe_chart(symbol, timeout=8):
     encoded = urllib.parse.quote(symbol, safe="")
@@ -120,8 +171,9 @@ def main(argv=None):
         print("Indian market data probe - READ ONLY; orders_enabled=False")
         for item in report["charts"]:
             status = "OK" if item.get("ok") else "UNAVAILABLE"
-            print("{:11} {:16} bars={} last_bar_utc={} {}".format(
-                status, item.get("requested_symbol", "?"),
+            print("{:11} {:16} freshness={:18} age_min={} bars={} last_bar_utc={} {}".format(
+                status, item.get("requested_symbol", "?"), item.get("freshness", "UNKNOWN"),
+                round(item["age_seconds"] / 60, 1) if item.get("age_seconds") is not None else "-",
                 item.get("interval_bars_returned", 0), item.get("last_bar_utc") or "-",
                 item.get("error") or ""))
         if "options_probe" in report:
