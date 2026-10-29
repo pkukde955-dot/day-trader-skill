@@ -27,6 +27,63 @@ class ParseChartTests(unittest.TestCase):
         self.assertEqual(result["interval_bars_returned"], 2)
         self.assertEqual(result["currency"], "INR")
 
+    def test_freshness_is_reported_deterministically(self):
+        payload = {
+            "chart": {"result": [{
+                "meta": {"symbol": "^NSEI"},
+                "timestamp": [1790000000, 1790000300],
+                "indicators": {"quote": [{"close": [25000.0, 25010.0]}]},
+            }], "error": None}
+        }
+        result = parse_chart(payload, now_epoch=1790000600)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["fresh"])
+        self.assertEqual(result["freshness"], "FRESH")
+        self.assertEqual(result["age_seconds"], 300.0)
+
+    def test_stale_and_future_bars_are_not_marked_fresh(self):
+        base = {
+            "chart": {"result": [{
+                "meta": {"symbol": "^NSEI"},
+                "timestamp": [1790000000],
+                "indicators": {"quote": [{"close": [25000.0]}]},
+            }], "error": None}
+        }
+        stale = parse_chart(base, now_epoch=1790002000)
+        future = parse_chart(base, now_epoch=1789999900)
+        self.assertTrue(stale["ok"])
+        self.assertFalse(stale["fresh"])
+        self.assertEqual(stale["freshness"], "STALE")
+        self.assertFalse(future["fresh"])
+        self.assertEqual(future["freshness"], "FUTURE")
+
+    def test_nonfinite_closes_do_not_count_as_valid(self):
+        payload = {
+            "chart": {"result": [{
+                "meta": {"symbol": "^NSEI"},
+                "timestamp": [1790000000, 1790000300, 1790000600],
+                "indicators": {"quote": [{"close": [float("nan"), float("inf"), None]}]},
+            }], "error": None}
+        }
+        result = parse_chart(payload, now_epoch=1790000600)
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["fresh"])
+        self.assertEqual(result["valid_closes"], 0)
+
+    def test_timestamp_close_length_mismatch_is_not_fresh(self):
+        payload = {
+            "chart": {"result": [{
+                "meta": {"symbol": "^NSEI"},
+                "timestamp": [1790000000, 1790000300],
+                "indicators": {"quote": [{"close": [25000.0]}]},
+            }], "error": None}
+        }
+        result = parse_chart(payload, now_epoch=1790000600)
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["fresh"])
+        self.assertEqual(result["freshness"], "MISALIGNED")
+        self.assertFalse(result["timestamp_close_series_aligned"])
+
     def test_empty_result_is_unavailable(self):
         self.assertFalse(parse_chart({"chart": {"result": [], "error": None}})["ok"])
 
