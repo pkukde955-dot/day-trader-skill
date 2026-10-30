@@ -358,5 +358,54 @@ class PaperTraderTests(unittest.TestCase):
             self.trader.mark_to_market([])
 
 
+    def test_persistence_failure_rolls_back_memory_and_partial_journal(self):
+        original_persist = self.trader._persist
+
+        def fail_after_partial_append():
+            with open(self.journal, "ab") as handle:
+                handle.write(b'{"type":"state"')
+                handle.flush()
+            raise OSError("simulated disk failure")
+
+        self.trader._persist = fail_after_partial_append
+        with self.assertRaisesRegex(OSError, "simulated disk failure"):
+            self.trader.buy("BTCUSDT", "100", "1", "buy-fail", self.day)
+
+        self.assertEqual(self.trader.cash, Decimal("1000"))
+        self.assertEqual(self.trader.positions, {})
+        self.assertNotIn("buy-fail", self.trader.seen_signal_ids)
+        self.assertFalse(__import__("os").path.exists(self.journal))
+        self.trader._persist = original_persist
+
+        restored = paper.PaperTrader(journal_path=self.journal)
+        self.assertEqual(restored.cash, Decimal("1000"))
+        self.assertEqual(restored.positions, {})
+
+    def test_concurrent_duplicate_signal_only_executes_once(self):
+        import threading
+        barrier = threading.Barrier(3)
+        outcomes = []
+
+        def submit():
+            barrier.wait()
+            try:
+                self.trader.buy("BTCUSDT", "100", "1", "shared-id", self.day)
+                outcomes.append("accepted")
+            except paper.PaperTradeError:
+                outcomes.append("rejected")
+
+        threads = [threading.Thread(target=submit) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        barrier.wait()
+        for thread in threads:
+            thread.join(timeout=5)
+
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.assertCountEqual(outcomes, ["accepted", "rejected"])
+        self.assertEqual(self.trader.positions["BTCUSDT"]["qty"], Decimal("1"))
+        self.assertEqual(self.trader.cash, Decimal("898.899"))
+
+
 if __name__ == "__main__":
     unittest.main()
