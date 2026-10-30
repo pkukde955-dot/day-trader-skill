@@ -122,6 +122,8 @@ class PerpsPaperTrader:
                     side = p["side"]
                     vals = {k: dec(p[k]) for k in
                             ("qty", "entry", "leverage", "margin", "maintenance_rate", "funding_paid")}
+                    vals["stop_price"] = dec(p.get("stop_price", "0"), "stop price")
+                    vals["target_price"] = dec(p.get("target_price", "0"), "target price")
                     if side not in ("LONG", "SHORT") or min(vals[k] for k in ("qty", "entry", "leverage", "margin")) <= 0:
                         raise ValueError("Invalid position")
                     positions[symbol] = dict(vals, side=side)
@@ -159,7 +161,8 @@ class PerpsPaperTrader:
 
     def open_position(self, symbol, side, reference_price, quantity, leverage, signal_id,
                       quantity_step="0.001", min_quantity="0.001",
-                      maintenance_margin_rate=None, timestamp_ms=None):
+                      maintenance_margin_rate=None, timestamp_ms=None,
+                      stop_price=None, target_price=None):
         with self._lock:
             ts = timestamp_ms or int(time.time() * 1000)
             self._risk_check(ts)
@@ -187,18 +190,25 @@ class PerpsPaperTrader:
             mmr = self.maintenance_margin_rate if maintenance_margin_rate is None else dec(maintenance_margin_rate)
             if not (0 <= mmr < 1):
                 raise PaperPerpsError("Invalid maintenance margin rate")
+            stop = dec(stop_price, "stop price") if stop_price is not None else Decimal("0")
+            target = dec(target_price, "target price") if target_price is not None else Decimal("0")
+            if stop and (stop <= 0 or (side == "LONG" and stop >= fill) or (side == "SHORT" and stop <= fill)):
+                raise PaperPerpsError("Stop must be positive and below LONG / above SHORT entry")
+            if target and (target <= 0 or (side == "LONG" and target <= fill) or (side == "SHORT" and target >= fill)):
+                raise PaperPerpsError("Target must be positive and above LONG / below SHORT entry")
             before = self._snapshot()
             self.balance -= margin + fee
             self.daily_realized -= fee
             self.daily_key = self._day(ts)
             self.positions[symbol] = {"side": side, "qty": qty, "entry": fill,
                 "leverage": lev, "margin": margin, "maintenance_rate": mmr,
-                "funding_paid": Decimal("0")}
+                "funding_paid": Decimal("0"), "stop_price": stop, "target_price": target}
             self.seen_ids.add(signal_id)
             self._commit(before)
             return {"symbol": symbol, "side": side, "quantity": qty, "fill_price": fill,
                     "notional": notional, "leverage": lev, "initial_margin": margin,
-                    "entry_fee": fee, "estimated_liquidation_price": self.liquidation_estimate(symbol),
+                    "entry_fee": fee, "stop_price": stop or None, "target_price": target or None,
+                    "estimated_liquidation_price": self.liquidation_estimate(symbol),
                     "liquidation_estimate_note": "Simplified isolated-margin estimate; excludes tiered maintenance, close fees and exchange liquidation rules."}
 
     def liquidation_estimate(self, symbol):
@@ -232,6 +242,31 @@ class PerpsPaperTrader:
             return {"symbol": symbol, "side": p["side"], "quantity": p["qty"],
                     "fill_price": fill, "gross_pnl": pnl, "exit_fee": fee,
                     "net_pnl": net, "balance": self.balance}
+
+    def evaluate_exits(self, timestamp_ms=None):
+        """Close paper positions whose latest mark has crossed a persisted stop/target."""
+        with self._lock:
+            ts = timestamp_ms if timestamp_ms is not None else int(time.time() * 1000)
+            outcomes = []
+            for symbol, position in list(self.positions.items()):
+                if symbol not in self.marks:
+                    continue
+                mark = self.marks[symbol]
+                stop, target, side = position.get("stop_price", Decimal("0")), position.get("target_price", Decimal("0")), position["side"]
+                reason = None
+                if stop and ((side == "LONG" and mark <= stop) or (side == "SHORT" and mark >= stop)):
+                    reason = "STOP"
+                elif target and ((side == "LONG" and mark >= target) or (side == "SHORT" and mark <= target)):
+                    reason = "TARGET"
+                if reason:
+                    # Stops use the observed mark (gap-through is not filled at the stop).
+                    # Targets use the target price, avoiding optimistic gap improvement.
+                    reference = mark if reason == "STOP" else target
+                    exit_id = "auto-%s-%s-%s" % (reason.lower(), symbol, ts)
+                    result = self.close_position(symbol, reference, exit_id, ts)
+                    result["exit_reason"] = reason
+                    outcomes.append(result)
+            return outcomes
 
     def apply_funding(self, symbol, funding_rate, event_id, mark_price=None, timestamp_ms=None):
         with self._lock:

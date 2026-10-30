@@ -86,6 +86,33 @@ class PerpsPaperTests(unittest.TestCase):
         with self.assertRaises(engine.PaperPerpsError):
             restored.open_position("B-ETH_USDT", "LONG", "100", "1", "2", "open-1")
 
+
+    def test_stop_target_persist_and_monitor_long_stop_gap(self):
+        opened = self.bot.open_position("B-BTC_USDT", "LONG", "100", "1", "5", "with-levels",
+            stop_price="95", target_price="110", timestamp_ms=1800000000000)
+        self.assertEqual(opened["stop_price"], Decimal("95"))
+        restored = engine.PerpsPaperTrader(starting_balance="1000", journal_path=self.bot.journal_path)
+        restored.update_marks({"B-BTC_USDT": "90"}, 1800000000001)
+        exits = restored.evaluate_exits(1800000000001)
+        self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["exit_reason"], "STOP")
+        self.assertLess(exits[0]["fill_price"], Decimal("95"))
+        self.assertEqual(restored.status(1800000000001)["open_position_count"], 0)
+
+    def test_short_target_auto_exit_and_no_duplicate_reclose(self):
+        self.bot.open_position("B-BTC_USDT", "SHORT", "100", "1", "5", "short-levels",
+            stop_price="105", target_price="90", timestamp_ms=1800000000000)
+        self.bot.update_marks({"B-BTC_USDT": "89"}, 1800000000001)
+        exits = self.bot.evaluate_exits(1800000000001)
+        self.assertEqual(exits[0]["exit_reason"], "TARGET")
+        self.assertEqual(exits[0]["fill_price"], Decimal("90.045"))
+        self.assertEqual(self.bot.evaluate_exits(1800000000002), [])
+
+    def test_invalid_stop_target_rejected(self):
+        with self.assertRaises(engine.PaperPerpsError):
+            self.bot.open_position("B-BTC_USDT", "LONG", "100", "1", "5", "bad-stop",
+                stop_price="101")
+
     def test_liquidation_is_explicitly_approximate_and_paper_only(self):
         r = self.open()
         self.assertGreater(r["estimated_liquidation_price"], 0)
