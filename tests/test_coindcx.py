@@ -298,6 +298,39 @@ class PaperTraderTests(unittest.TestCase):
             self.trader.positions["BTCUSDT"]["qty"], Decimal("1")
         )
 
+    def test_maximum_open_exposure_blocks_additional_position(self):
+        limited = paper.PaperTrader(
+            starting_cash="1000",
+            fee_rate="0",
+            slippage_rate="0",
+            max_open_exposure="150",
+            journal_path=self.journal,
+        )
+        limited.buy("BTCUSDT", "100", "1", "buy-btc", self.day)
+        with self.assertRaisesRegex(
+            paper.PaperTradeError, "Maximum open exposure"
+        ):
+            limited.buy("ETHUSDT", "60", "1", "buy-eth", self.day)
+
+    def test_maximum_open_exposure_can_be_configured(self):
+        limited = paper.PaperTrader(
+            starting_cash="1000",
+            fee_rate="0",
+            slippage_rate="0",
+            max_open_exposure="250",
+            journal_path=self.journal,
+        )
+        limited.buy("BTCUSDT", "100", "1", "buy-btc", self.day)
+        limited.buy("ETHUSDT", "100", "1", "buy-eth", self.day)
+        self.assertEqual(
+            limited.status()["open_exposure"], Decimal("200")
+        )
+
+    def test_default_maximum_open_exposure_equals_starting_cash(self):
+        self.assertEqual(
+            self.trader.status()["max_open_exposure"], Decimal("1000")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
