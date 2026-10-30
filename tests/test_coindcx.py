@@ -258,6 +258,46 @@ class PaperTraderTests(unittest.TestCase):
         with self.assertRaises(paper.PaperTradeError):
             self.trader.sell("BTCUSDT", "100", "1", "sell-1", self.day)
 
+    def test_journal_rejects_negative_position_quantity(self):
+        import json
+        bad_state = {
+            "version": paper.PaperTrader.VERSION,
+            "cash": "100",
+            "positions": {
+                "BTCUSDT": {"qty": "-1", "avg_cost": "100"}
+            },
+            "seen_signal_ids": [],
+            "daily_realized": "0",
+            "daily_date": None,
+        }
+        with open(self.journal, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"type": "state", "state": bad_state}) + "\\n")
+        with self.assertRaises(paper.PaperTradeError):
+            paper.PaperTrader(journal_path=self.journal)
+
+    def test_journal_rejects_invalid_daily_date(self):
+        import json
+        bad_state = {
+            "version": paper.PaperTrader.VERSION,
+            "cash": "100",
+            "positions": {},
+            "seen_signal_ids": [],
+            "daily_realized": "0",
+            "daily_date": "not-a-date",
+        }
+        with open(self.journal, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"type": "state", "state": bad_state}) + "\\n")
+        with self.assertRaises(paper.PaperTradeError):
+            paper.PaperTrader(journal_path=self.journal)
+
+    def test_status_positions_are_deep_copied(self):
+        self.trader.buy("BTCUSDT", "100", "1", "buy-1", self.day)
+        snapshot = self.trader.status()
+        snapshot["positions"]["BTCUSDT"]["qty"] = Decimal("999")
+        self.assertEqual(
+            self.trader.positions["BTCUSDT"]["qty"], Decimal("1")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
