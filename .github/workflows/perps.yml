@@ -4,12 +4,6 @@ on:
   push:
     branches:
       - feat/coindcx-usdt-perps-only
-  pull_request:
-    paths:
-      - 'trader-perps/**'
-      - 'trader-scanner/crypto/**'
-      - 'tests/**'
-      - '.github/workflows/perps.yml'
 
 permissions:
   contents: read
