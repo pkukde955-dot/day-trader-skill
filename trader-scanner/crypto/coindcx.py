@@ -59,7 +59,9 @@ class CoinDCXClient:
 
     def markets(self):
         data = self._get("/exchange/v1/markets")
-        if not all(isinstance(item, str) for item in data):
+        if not isinstance(data, list) or any(
+            not isinstance(item, str) or not item.strip() for item in data
+        ):
             raise CoinDCXError("Invalid markets response")
         return data
 
