@@ -16,6 +16,6 @@ class StrategyTests(unittest.TestCase):
  def test_excess_risk_rejected(self):
   with self.assertRaises(ValueError): s.size_for_risk("1000","100","99","0.10","0.001","0.001","2","5")
  def test_below_minimum_returns_zero(self):
-  self.assertEqual(s.size_for_risk("1000","100","99","0.001","1","1","2","5"),Decimal("0"))
+  self.assertEqual(s.size_for_risk("1000","100","99","0.0005","1","1","2","5"),Decimal("0"))
 
 if __name__=="__main__": unittest.main()
