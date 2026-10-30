@@ -71,7 +71,8 @@ or in the `SEC_USER_AGENT` environment variable.
 | `/trader-broker` | Order Executor | Sends approved orders to your broker, paper trading by default, never without your yes. |
 | `/trader-alerts` | Price Alerts | Rings when a price, a stop or the opening bell hits. |
 | `/trader-analyst` | Earnings Analyst | Reads earnings reports and sums up what changed. |
-| `/trader-pelosi` | Pelosi Tracker | Reads Congress's stock-trade disclosures the minute they are filed. |\n| `/trader-perps` | CoinDCX Perpetuals Trader | Scans USDT perpetuals and manages isolated-margin paper positions. Live execution is not implemented. |
+| `/trader-pelosi` | Pelosi Tracker | Reads Congress's stock-trade disclosures the minute they are filed. |
+| `/trader-perps` | CoinDCX Perpetuals Trader | Scans USDT perpetuals and manages isolated-margin paper positions. Live execution is not implemented. |
 
 ## How to use it
 
@@ -128,7 +129,9 @@ polite about it.
 ```bash
 python3 trader-scanner/scan.py universe                                # ~5,900 US stocks, Nasdaq Trader
 python3 trader-scanner/scan.py daily                                   # pre-market setups, whole universe
-python3 trader-scanner/scan.py orb --at 10:15                          # opening-range breakouts so far\npython3 trader-perps/perps.py scan                                    # CoinDCX USDT perpetual setups\npython3 trader-perps/perps.py paper-entry --risk 0.005 --leverage 2   # paper only
+python3 trader-scanner/scan.py orb --at 10:15                          # opening-range breakouts so far
+python3 trader-perps/perps.py scan                                    # CoinDCX USDT perpetual setups
+python3 trader-perps/perps.py paper-entry --risk 0.005 --leverage 2   # paper only
 python3 trader-news/news.py --tickers TSLA --hours 12                  # headlines, 8-Ks, today's move
 python3 trader-entry/entry.py check TSLA --setup orb                   # waiting / triggered / expired
 python3 trader-entry/entry.py watch TSLA --every 30                    # bar by bar until it triggers

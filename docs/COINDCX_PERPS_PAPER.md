@@ -1,4 +1,4 @@
-# CoinDCX USDT Perpetuals — Paper Trader
+# CoinDCX USDT Perpetuals - Paper Trader
 
 Paper-only implementation. There is no authentication, order placement, cancel, or live-execution code.
 

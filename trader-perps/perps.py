@@ -38,6 +38,7 @@ def main():
         row=scan(client,pair)
         if a.command=="paper-entry" and row["setup"]["signal"] in ("LONG","SHORT"):
           meta,s=row["instrument"],row["setup"]; engine=PerpsPaperTrader(starting_balance=a.balance,journal_path=a.journal)
+          engine.update_marks({pair: row["mark_price"]})
           qty=size_for_risk(engine.status()["equity"],s["entry"],s["stop"],a.risk,
              meta["quantity_increment"],meta["min_trade_size"],a.leverage,a.leverage)
           if qty<=0: row["paper_result"]={"status":"BLOCKED","reason":"risk_cap_or_minimum_quantity"}
