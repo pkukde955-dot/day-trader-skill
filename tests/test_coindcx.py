@@ -381,6 +381,67 @@ class PaperTraderTests(unittest.TestCase):
         self.assertEqual(restored.cash, Decimal("1000"))
         self.assertEqual(restored.positions, {})
 
+    def test_restart_discards_only_incomplete_final_journal_record(self):
+        self.trader.buy("BTCUSDT", "100", "1", "buy-good", self.day)
+        with open(self.journal, "ab") as handle:
+            handle.write(b'{"type":"state","state":')
+        restored = paper.PaperTrader(
+            starting_cash="1000",
+            fee_rate="0.001",
+            slippage_rate="0.01",
+            qty_step="0.001",
+            min_qty="0.001",
+            daily_loss_limit="10",
+            journal_path=self.journal,
+        )
+        self.assertEqual(restored.cash, self.trader.cash)
+        self.assertEqual(restored.positions, self.trader.positions)
+        with open(self.journal, "rb") as handle:
+            journal_bytes = handle.read()
+        self.assertTrue(journal_bytes.endswith(b"\\n"))
+        self.assertNotIn(b'"state":}', journal_bytes)
+
+    def test_restart_rejects_corrupt_complete_journal_record(self):
+        with open(self.journal, "wb") as handle:
+            handle.write(b'{"type":"broken"}\\n')
+        with self.assertRaisesRegex(paper.PaperTradeError, "recovery failed"):
+            paper.PaperTrader(journal_path=self.journal)
+
+    def test_failed_new_day_buy_restores_previous_daily_state(self):
+        self.trader.daily_date = "2026-01-01"
+        self.trader.daily_realized = Decimal("-3")
+        original_persist = self.trader._persist
+
+        def fail_persist():
+            with open(self.journal, "ab") as handle:
+                handle.write(b'{"partial":')
+                handle.flush()
+            raise OSError("simulated fsync failure")
+
+        self.trader._persist = fail_persist
+        with self.assertRaisesRegex(OSError, "simulated fsync failure"):
+            self.trader.buy("BTCUSDT", "100", "1", "new-day-buy", self.day)
+        self.assertEqual(self.trader.daily_date, "2026-01-01")
+        self.assertEqual(self.trader.daily_realized, Decimal("-3"))
+        self.trader._persist = original_persist
+
+    def test_journal_replays_buy_and_sell_after_restart(self):
+        self.trader.buy("BTCUSDT", "100", "1", "buy-replay", self.day)
+        self.trader.sell("BTCUSDT", "110", "1", "sell-replay", self.day)
+        restored = paper.PaperTrader(
+            starting_cash="1000",
+            fee_rate="0.001",
+            slippage_rate="0.01",
+            qty_step="0.001",
+            min_qty="0.001",
+            daily_loss_limit="10",
+            journal_path=self.journal,
+        )
+        self.assertEqual(restored.cash, self.trader.cash)
+        self.assertEqual(restored.positions, {})
+        self.assertEqual(restored.daily_realized, self.trader.daily_realized)
+        self.assertTrue({"buy-replay", "sell-replay"}.issubset(restored.seen_signal_ids))
+
     def test_concurrent_duplicate_signal_only_executes_once(self):
         import threading
         barrier = threading.Barrier(3)
