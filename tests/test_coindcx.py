@@ -374,7 +374,7 @@ class PaperTraderTests(unittest.TestCase):
         self.assertEqual(self.trader.cash, Decimal("1000"))
         self.assertEqual(self.trader.positions, {})
         self.assertNotIn("buy-fail", self.trader.seen_signal_ids)
-        self.assertFalse(__import__("os").path.exists(self.journal))
+        self.assertEqual(__import__("os").path.getsize(self.journal), 0)
         self.trader._persist = original_persist
 
         restored = paper.PaperTrader(journal_path=self.journal)
