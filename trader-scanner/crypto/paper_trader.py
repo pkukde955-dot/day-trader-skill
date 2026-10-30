@@ -62,6 +62,8 @@ class PaperTrader:
             raise ValueError("max_open_exposure must be positive")
 
         self.positions = {}
+        # Latest externally supplied marks; deliberately refreshed after restart.
+        self.mark_prices = {}
         self.seen_signal_ids = set()
         self.daily_realized = Decimal("0")
         self.daily_date = None
@@ -186,6 +188,40 @@ class PaperTrader:
                 self.daily_date,
             ) = last_state
 
+    def _unrealized_pnl(self):
+        """Unrealized P&L for positions with a current supplied mark price."""
+        return sum(
+            (
+                (self.mark_prices[symbol] - position["avg_cost"])
+                * position["qty"]
+                for symbol, position in self.positions.items()
+                if symbol in self.mark_prices
+            ),
+            Decimal("0"),
+        )
+
+    def mark_to_market(self, prices):
+        """Update marks from a caller-validated market snapshot.
+
+        Marks are not persisted: callers must refresh them after process restart.
+        """
+        if not isinstance(prices, dict) or not prices:
+            raise PaperTradeError("A non-empty symbol-to-price mapping is required")
+        updated = {}
+        for symbol, price in prices.items():
+            if not isinstance(symbol, str) or not symbol.strip():
+                raise PaperTradeError("Mark symbol is required")
+            value = D(price)
+            if value <= 0:
+                raise PaperTradeError("Mark prices must be positive")
+            updated[symbol] = value
+        self.mark_prices.update(updated)
+        return {
+            "unrealized_pnl": self._unrealized_pnl(),
+            "daily_realized": self.daily_realized,
+            "risk_pnl": self.daily_realized + self._unrealized_pnl(),
+        }
+
     def _open_exposure(self):
         """Conservative cost-basis notional of all currently open positions."""
         return sum(
@@ -215,7 +251,8 @@ class PaperTrader:
             timestamp_ms = int(time.time() * 1000)
         self._roll_day(timestamp_ms)
 
-        if self.daily_realized <= -self.daily_loss_limit:
+        risk_pnl = self.daily_realized + self._unrealized_pnl()
+        if risk_pnl <= -self.daily_loss_limit:
             raise PaperTradeError("Daily loss limit reached: entries blocked")
 
         fill_price = price * (1 + self.slippage_rate)
@@ -304,7 +341,10 @@ class PaperTrader:
             "cash": self.cash,
             "positions": copy.deepcopy(self.positions),
             "daily_realized": self.daily_realized,
+            "unrealized_pnl": self._unrealized_pnl(),
+            "risk_pnl": self.daily_realized + self._unrealized_pnl(),
             "daily_loss_limit": self.daily_loss_limit,
+            "marked_symbols": sorted(self.mark_prices),
             "max_open_exposure": self.max_open_exposure,
             "open_exposure": self._open_exposure(),
             "daily_date": self.daily_date,
