@@ -1,0 +1,35 @@
+name: CoinDCX Perps Tests
+on:
+  push:
+    branches: [feat/coindcx-usdt-perps-only]
+permissions:
+  contents: read
+jobs:
+  perps-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12','3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Focused Perps tests (require nonzero test count)
+        run: |
+          python - <<'PY'
+          import unittest
+          patterns = ['test_coindcx_perps.py', 'test_perps_paper.py', 'test_perps_strategy.py']
+          for pattern in patterns:
+              suite = unittest.defaultTestLoader.discover('tests', pattern=pattern)
+              count = suite.countTestCases()
+              print(f'{pattern}: {count} tests')
+              if count == 0:
+                  raise SystemExit(f'No tests discovered for {pattern}')
+              result = unittest.TextTestRunner(verbosity=2).run(suite)
+              if not result.wasSuccessful():
+                  raise SystemExit(1)
+          PY
+      - name: Full regression suite
+        run: python -m unittest discover -s tests -v
