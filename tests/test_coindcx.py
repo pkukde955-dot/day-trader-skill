@@ -351,13 +351,16 @@ class PaperTraderTests(unittest.TestCase):
 
     def test_mark_to_market_reports_unrealized_pnl(self):
         self.trader.buy("BTCUSDT", "100", "1", "buy-1", self.day)
-        result = self.trader.mark_to_market({"BTCUSDT": "110"})
+        result = self.trader.mark_to_market(
+            {"BTCUSDT": "110"}, timestamp_ms=self.day
+        )
         self.assertEqual(
             result["unrealized_pnl"],
             Decimal("110") - self.trader.positions["BTCUSDT"]["avg_cost"],
         )
         self.assertEqual(
-            self.trader.status()["risk_pnl"], result["risk_pnl"]
+            self.trader.status(timestamp_ms=self.day)["risk_pnl"],
+            result["risk_pnl"]
         )
 
     def test_unrealized_loss_blocks_new_entries(self):
@@ -367,6 +370,43 @@ class PaperTraderTests(unittest.TestCase):
             paper.PaperTradeError, "Daily loss limit reached"
         ):
             self.trader.buy("ETHUSDT", "10", "1", "buy-2", self.day)
+
+    def test_mark_to_market_replaces_snapshot_and_drops_omitted_marks(self):
+        self.trader.buy("BTCUSDT", "100", "1", "buy-btc", self.day)
+        self.trader.buy("ETHUSDT", "50", "1", "buy-eth", self.day)
+        self.trader.mark_to_market(
+            {"BTCUSDT": "110", "ETHUSDT": "40"},
+            timestamp_ms=self.day,
+        )
+        result = self.trader.mark_to_market(
+            {"BTCUSDT": "105"}, timestamp_ms=self.day + 60_000
+        )
+        self.assertEqual(self.trader.mark_prices, {"BTCUSDT": Decimal("105")})
+        self.assertEqual(
+            result["unrealized_pnl"],
+            (Decimal("105") - self.trader.positions["BTCUSDT"]["avg_cost"]),
+        )
+        self.assertNotIn("ETHUSDT", self.trader.mark_prices)
+
+    def test_status_rolls_daily_realized_pnl_on_new_utc_day(self):
+        self.trader.daily_date = self.trader._date(self.day)
+        self.trader.daily_realized = Decimal("-7")
+        next_day = self.day + 86_400_000
+        snapshot = self.trader.status(timestamp_ms=next_day)
+        self.assertEqual(snapshot["daily_date"], self.trader._date(next_day))
+        self.assertEqual(snapshot["daily_realized"], Decimal("0"))
+        self.assertEqual(snapshot["risk_pnl"], Decimal("0"))
+
+    def test_mark_to_market_rolls_daily_realized_pnl_on_new_utc_day(self):
+        self.trader.daily_date = self.trader._date(self.day)
+        self.trader.daily_realized = Decimal("-7")
+        next_day = self.day + 86_400_000
+        result = self.trader.mark_to_market(
+            {"BTCUSDT": "100"}, timestamp_ms=next_day
+        )
+        self.assertEqual(result["daily_realized"], Decimal("0"))
+        self.assertEqual(result["risk_pnl"], Decimal("0"))
+        self.assertEqual(self.trader.daily_date, self.trader._date(next_day))
 
     def test_mark_to_market_rejects_invalid_prices(self):
         with self.assertRaises(paper.PaperTradeError):
