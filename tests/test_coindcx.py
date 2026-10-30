@@ -50,8 +50,6 @@ class AggregateCandles(unittest.TestCase):
             crypto.aggregate_candles(self.rows, minutes=1)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ValidateCandles(unittest.TestCase):
@@ -141,8 +139,6 @@ class MockedClient(unittest.TestCase):
         self.assertEqual(self.client.orderbook("B-BTC_USDT"), expected)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ValidatedClientPipeline(unittest.TestCase):
@@ -182,8 +178,6 @@ class ValidatedClientPipeline(unittest.TestCase):
             )
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class PaperTraderTests(unittest.TestCase):
@@ -263,3 +257,7 @@ class PaperTraderTests(unittest.TestCase):
     def test_sell_cannot_exceed_position(self):
         with self.assertRaises(paper.PaperTradeError):
             self.trader.sell("BTCUSDT", "100", "1", "sell-1", self.day)
+
+
+if __name__ == "__main__":
+    unittest.main()
