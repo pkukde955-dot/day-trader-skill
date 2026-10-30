@@ -398,7 +398,7 @@ class PaperTraderTests(unittest.TestCase):
         self.assertEqual(restored.positions, self.trader.positions)
         with open(self.journal, "rb") as handle:
             journal_bytes = handle.read()
-        self.assertTrue(journal_bytes.endswith(b"\\n"))
+        self.assertTrue(journal_bytes.endswith(b"\n"))
         self.assertNotIn(b'"state":}', journal_bytes)
 
     def test_restart_rejects_corrupt_complete_journal_record(self):
