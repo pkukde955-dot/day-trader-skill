@@ -208,8 +208,8 @@ class PaperTrader:
         """Discard only a final JSONL fragment lacking its terminating newline."""
         with open(self.journal_path, "r+b") as handle:
             content = handle.read()
-            if content and not content.endswith(b"\\n"):
-                last_newline = content.rfind(b"\\n")
+            if content and not content.endswith(b"\n"):
+                last_newline = content.rfind(b"\n")
                 safe_size = last_newline + 1
                 handle.truncate(safe_size)
                 handle.flush()
