@@ -204,9 +204,25 @@ class PaperTrader:
 
         return cash, positions, set(raw_ids), daily_realized, daily_date
 
+    def _repair_incomplete_tail(self):
+        """Discard only a final JSONL fragment lacking its terminating newline."""
+        with open(self.journal_path, "r+b") as handle:
+            content = handle.read()
+            if content and not content.endswith(b"\\n"):
+                last_newline = content.rfind(b"\\n")
+                safe_size = last_newline + 1
+                handle.truncate(safe_size)
+                handle.flush()
+                os.fsync(handle.fileno())
+
     def _restore(self):
         if not os.path.exists(self.journal_path):
             return
+
+        try:
+            self._repair_incomplete_tail()
+        except OSError as exc:
+            raise PaperTradeError("Journal recovery could not repair incomplete tail: " + str(exc)) from exc
 
         last_state = None
         with open(self.journal_path, encoding="utf-8") as handle:
@@ -296,9 +312,13 @@ class PaperTrader:
 
         if timestamp_ms is None:
             timestamp_ms = int(time.time() * 1000)
-        self._roll_day(timestamp_ms)
+        trade_date = self._date(timestamp_ms)
+        effective_daily_realized = (
+            self.daily_realized if self.daily_date == trade_date
+            else Decimal("0")
+        )
 
-        risk_pnl = self.daily_realized + self._unrealized_pnl()
+        risk_pnl = effective_daily_realized + self._unrealized_pnl()
         if risk_pnl <= -self.daily_loss_limit:
             raise PaperTradeError("Daily loss limit reached: entries blocked")
 
@@ -319,6 +339,7 @@ class PaperTrader:
 
         snapshot = self._snapshot_mutable_state()
         journal_size = os.path.getsize(self.journal_path) if os.path.exists(self.journal_path) else 0
+        self._roll_day(timestamp_ms)
         self.cash -= total_cost
         self.positions[symbol] = {
             "qty": new_qty,
@@ -354,7 +375,6 @@ class PaperTrader:
 
         if timestamp_ms is None:
             timestamp_ms = int(time.time() * 1000)
-        self._roll_day(timestamp_ms)
 
         fill_price = price * (1 - self.slippage_rate)
         notional = fill_price * quantity
@@ -366,6 +386,7 @@ class PaperTrader:
 
         snapshot = self._snapshot_mutable_state()
         journal_size = os.path.getsize(self.journal_path) if os.path.exists(self.journal_path) else 0
+        self._roll_day(timestamp_ms)
         self.cash += proceeds
         remaining = position["qty"] - quantity
 
