@@ -26,7 +26,7 @@ class PerpsPaperTests(unittest.TestCase):
     def test_long_short_and_margin(self):
         result = self.open()
         self.assertEqual(result["side"], "LONG")
-        self.assertEqual(result["initial_margin"], Decimal("20.020020"))
+        self.assertEqual(result["initial_margin"], Decimal("20.02"))
         self.bot.close_position("B-BTC_USDT", "100", "close-1", 1800000000001)
         self.assertEqual(self.open("SHORT", "open-2")["side"], "SHORT")
 
