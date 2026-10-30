@@ -332,5 +332,31 @@ class PaperTraderTests(unittest.TestCase):
         )
 
 
+    def test_mark_to_market_reports_unrealized_pnl(self):
+        self.trader.buy("BTCUSDT", "100", "1", "buy-1", self.day)
+        result = self.trader.mark_to_market({"BTCUSDT": "110"})
+        self.assertEqual(
+            result["unrealized_pnl"],
+            Decimal("110") - self.trader.positions["BTCUSDT"]["avg_cost"],
+        )
+        self.assertEqual(
+            self.trader.status()["risk_pnl"], result["risk_pnl"]
+        )
+
+    def test_unrealized_loss_blocks_new_entries(self):
+        self.trader.buy("BTCUSDT", "100", "1", "buy-1", self.day)
+        self.trader.mark_to_market({"BTCUSDT": "80"})
+        with self.assertRaisesRegex(
+            paper.PaperTradeError, "Daily loss limit reached"
+        ):
+            self.trader.buy("ETHUSDT", "10", "1", "buy-2", self.day)
+
+    def test_mark_to_market_rejects_invalid_prices(self):
+        with self.assertRaises(paper.PaperTradeError):
+            self.trader.mark_to_market({"BTCUSDT": "0"})
+        with self.assertRaises(paper.PaperTradeError):
+            self.trader.mark_to_market([])
+
+
 if __name__ == "__main__":
     unittest.main()
