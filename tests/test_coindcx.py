@@ -118,6 +118,23 @@ class MockedClient(unittest.TestCase):
             self.client.ticker_for("B-BTC_USDT")["last_price"], "100"
         )
 
+    def test_markets_accepts_only_a_list_of_nonempty_strings(self):
+        self.client._get = lambda path, params=None: ["B-BTC_USDT", "B-ETH_USDT"]
+        self.assertEqual(
+            self.client.markets(), ["B-BTC_USDT", "B-ETH_USDT"]
+        )
+
+    def test_markets_rejects_dictionary_response(self):
+        self.client._get = lambda path, params=None: {"B-BTC_USDT": "active"}
+        with self.assertRaisesRegex(crypto.CoinDCXError, "Invalid markets"):
+            self.client.markets()
+
+    def test_markets_rejects_non_string_or_blank_items(self):
+        for payload in ([{"market": "B-BTC_USDT"}], ["B-BTC_USDT", ""], [None]):
+            self.client._get = lambda path, params=None, data=payload: data
+            with self.assertRaisesRegex(crypto.CoinDCXError, "Invalid markets"):
+                self.client.markets()
+
     def test_missing_ticker(self):
         self.client._get = lambda path, params=None: []
         with self.assertRaises(crypto.CoinDCXError):
