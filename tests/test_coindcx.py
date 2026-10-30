@@ -271,7 +271,7 @@ class PaperTraderTests(unittest.TestCase):
             "daily_date": None,
         }
         with open(self.journal, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps({"type": "state", "state": bad_state}) + "\\n")
+            handle.write(json.dumps({"type": "state", "state": bad_state}) + "\n")
         with self.assertRaises(paper.PaperTradeError):
             paper.PaperTrader(journal_path=self.journal)
 
@@ -286,7 +286,7 @@ class PaperTraderTests(unittest.TestCase):
             "daily_date": "not-a-date",
         }
         with open(self.journal, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps({"type": "state", "state": bad_state}) + "\\n")
+            handle.write(json.dumps({"type": "state", "state": bad_state}) + "\n")
         with self.assertRaises(paper.PaperTradeError):
             paper.PaperTrader(journal_path=self.journal)
 
