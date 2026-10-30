@@ -33,6 +33,7 @@ class PaperTrader:
         qty_step="0.001",
         min_qty="0.001",
         daily_loss_limit="20",
+        max_open_exposure=None,
         journal_path="data/crypto_paper_journal.jsonl",
     ):
         self.fee_rate = D(fee_rate)
@@ -54,6 +55,11 @@ class PaperTrader:
         self.cash = D(starting_cash)
         if self.cash <= 0:
             raise ValueError("starting_cash must be positive")
+        self.max_open_exposure = (
+            self.cash if max_open_exposure is None else D(max_open_exposure)
+        )
+        if self.max_open_exposure <= 0:
+            raise ValueError("max_open_exposure must be positive")
 
         self.positions = {}
         self.seen_signal_ids = set()
@@ -180,6 +186,14 @@ class PaperTrader:
                 self.daily_date,
             ) = last_state
 
+    def _open_exposure(self):
+        """Conservative cost-basis notional of all currently open positions."""
+        return sum(
+            (position["qty"] * position["avg_cost"]
+             for position in self.positions.values()),
+            Decimal("0"),
+        )
+
     def _check_signal(self, signal_id):
         if not isinstance(signal_id, str) or not signal_id.strip():
             raise PaperTradeError("signal_id is required")
@@ -209,6 +223,8 @@ class PaperTrader:
         fee = notional * self.fee_rate
         total_cost = notional + fee
 
+        if self._open_exposure() + total_cost > self.max_open_exposure:
+            raise PaperTradeError("Maximum open exposure limit reached")
         if total_cost > self.cash:
             raise PaperTradeError("Insufficient paper cash")
 
@@ -289,5 +305,7 @@ class PaperTrader:
             "positions": copy.deepcopy(self.positions),
             "daily_realized": self.daily_realized,
             "daily_loss_limit": self.daily_loss_limit,
+            "max_open_exposure": self.max_open_exposure,
+            "open_exposure": self._open_exposure(),
             "daily_date": self.daily_date,
         }
