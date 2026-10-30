@@ -189,6 +189,8 @@ class PerpsPaperTrader:
                 raise PaperPerpsError("Invalid maintenance margin rate")
             before = self._snapshot()
             self.balance -= margin + fee
+            self.daily_realized -= fee
+            self.daily_key = self._day(ts)
             self.positions[symbol] = {"side": side, "qty": qty, "entry": fill,
                 "leverage": lev, "margin": margin, "maintenance_rate": mmr,
                 "funding_paid": Decimal("0")}
@@ -246,6 +248,8 @@ class PerpsPaperTrader:
             payment = -sign * mark * p["qty"] * rate
             before = self._snapshot()
             self.balance += payment
+            self._roll_day(int(time.time() * 1000))
+            self.daily_realized += payment
             p["funding_paid"] += -payment
             self.funding_events.add(event_id)
             self._commit(before)
