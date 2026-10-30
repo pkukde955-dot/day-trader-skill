@@ -1,9 +1,10 @@
 """Spot-only crypto paper trader. Never sends exchange orders."""
 
+import copy
 import json
 import os
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 
 
@@ -105,6 +106,51 @@ class PaperTrader:
             handle.flush()
             os.fsync(handle.fileno())
 
+    def _validated_state(self, state):
+        if not isinstance(state, dict):
+            raise ValueError("State must be an object")
+        if state.get("version") != self.VERSION:
+            raise ValueError("Unsupported journal version")
+
+        cash = D(state["cash"])
+        if cash < 0:
+            raise ValueError("Journal cash cannot be negative")
+
+        raw_positions = state["positions"]
+        if not isinstance(raw_positions, dict):
+            raise ValueError("Journal positions must be an object")
+        positions = {}
+        for symbol, raw in raw_positions.items():
+            if not isinstance(symbol, str) or not symbol.strip():
+                raise ValueError("Journal contains an invalid symbol")
+            if not isinstance(raw, dict):
+                raise ValueError("Journal position must be an object")
+            qty = D(raw["qty"])
+            avg_cost = D(raw["avg_cost"])
+            if qty <= 0 or avg_cost <= 0:
+                raise ValueError("Journal position values must be positive")
+            if self._round_qty(qty) != qty:
+                raise ValueError("Journal position quantity is off step")
+            positions[symbol] = {"qty": qty, "avg_cost": avg_cost}
+
+        raw_ids = state["seen_signal_ids"]
+        if not isinstance(raw_ids, list) or any(
+            not isinstance(item, str) or not item.strip() for item in raw_ids
+        ):
+            raise ValueError("Journal signal IDs are invalid")
+        if len(raw_ids) != len(set(raw_ids)):
+            raise ValueError("Journal contains duplicate signal IDs")
+
+        daily_realized = D(state["daily_realized"])
+        daily_date = state["daily_date"]
+        if daily_date is not None:
+            if not isinstance(daily_date, str):
+                raise ValueError("Journal daily date is invalid")
+            if date.fromisoformat(daily_date).isoformat() != daily_date:
+                raise ValueError("Journal daily date is invalid")
+
+        return cash, positions, set(raw_ids), daily_realized, daily_date
+
     def _restore(self):
         if not os.path.exists(self.journal_path):
             return
@@ -114,32 +160,25 @@ class PaperTrader:
             for line_number, line in enumerate(handle, 1):
                 try:
                     record = json.loads(line)
-                    if record.get("type") != "state":
+                    if not isinstance(record, dict) or record.get("type") != "state":
                         raise ValueError("Unknown journal record")
                     state = record["state"]
-                    if state.get("version") != self.VERSION:
-                        raise ValueError("Unsupported journal version")
-                    last_state = state
+                    validated = self._validated_state(state)
+                    last_state = validated
                 except Exception as exc:
                     raise PaperTradeError(
                         "Journal recovery failed at line "
                         + str(line_number) + ": " + str(exc)
                     ) from exc
 
-        if last_state is None:
-            return
-
-        self.cash = D(last_state["cash"])
-        self.positions = {
-            symbol: {
-                "qty": D(position["qty"]),
-                "avg_cost": D(position["avg_cost"]),
-            }
-            for symbol, position in last_state["positions"].items()
-        }
-        self.seen_signal_ids = set(last_state["seen_signal_ids"])
-        self.daily_realized = D(last_state["daily_realized"])
-        self.daily_date = last_state["daily_date"]
+        if last_state is not None:
+            (
+                self.cash,
+                self.positions,
+                self.seen_signal_ids,
+                self.daily_realized,
+                self.daily_date,
+            ) = last_state
 
     def _check_signal(self, signal_id):
         if not isinstance(signal_id, str) or not signal_id.strip():
@@ -247,7 +286,7 @@ class PaperTrader:
     def status(self):
         return {
             "cash": self.cash,
-            "positions": self.positions.copy(),
+            "positions": copy.deepcopy(self.positions),
             "daily_realized": self.daily_realized,
             "daily_loss_limit": self.daily_loss_limit,
             "daily_date": self.daily_date,
