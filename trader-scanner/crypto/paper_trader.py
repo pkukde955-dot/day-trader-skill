@@ -262,10 +262,12 @@ class PaperTrader:
         )
 
     @_synchronized
-    def mark_to_market(self, prices):
-        """Update marks from a caller-validated market snapshot.
+    def mark_to_market(self, prices, timestamp_ms=None):
+        """Replace marks with one complete caller-validated market snapshot.
 
-        Marks are not persisted: callers must refresh them after process restart.
+        A snapshot replaces previous marks so omitted symbols cannot retain stale
+        prices. Callers must include every open position they want marked.
+        Marks are not persisted and must be refreshed after process restart.
         """
         if not isinstance(prices, dict) or not prices:
             raise PaperTradeError("A non-empty symbol-to-price mapping is required")
@@ -277,11 +279,15 @@ class PaperTrader:
             if value <= 0:
                 raise PaperTradeError("Mark prices must be positive")
             updated[symbol] = value
-        self.mark_prices.update(updated)
+        if timestamp_ms is None:
+            timestamp_ms = int(time.time() * 1000)
+        self._roll_day(timestamp_ms)
+        self.mark_prices = updated
+        unrealized = self._unrealized_pnl()
         return {
-            "unrealized_pnl": self._unrealized_pnl(),
+            "unrealized_pnl": unrealized,
             "daily_realized": self.daily_realized,
-            "risk_pnl": self.daily_realized + self._unrealized_pnl(),
+            "risk_pnl": self.daily_realized + unrealized,
         }
 
     def _open_exposure(self):
@@ -410,7 +416,10 @@ class PaperTrader:
         }
 
     @_synchronized
-    def status(self):
+    def status(self, timestamp_ms=None):
+        if timestamp_ms is None:
+            timestamp_ms = int(time.time() * 1000)
+        self._roll_day(timestamp_ms)
         return {
             "cash": self.cash,
             "positions": copy.deepcopy(self.positions),
