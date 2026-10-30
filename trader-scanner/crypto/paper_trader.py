@@ -4,8 +4,18 @@ import copy
 import json
 import os
 import time
+import threading
+from functools import wraps
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
+
+
+def _synchronized(method):
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapped
 
 
 class PaperTradeError(Exception):
@@ -36,6 +46,7 @@ class PaperTrader:
         max_open_exposure=None,
         journal_path="data/crypto_paper_journal.jsonl",
     ):
+        self._lock = threading.RLock()
         self.fee_rate = D(fee_rate)
         self.slippage_rate = D(slippage_rate)
         self.qty_step = D(qty_step)
@@ -102,6 +113,40 @@ class PaperTrader:
             "daily_realized": str(self.daily_realized),
             "daily_date": self.daily_date,
         }
+
+    def _snapshot_mutable_state(self):
+        return (
+            self.cash,
+            copy.deepcopy(self.positions),
+            set(self.seen_signal_ids),
+            self.daily_realized,
+            self.daily_date,
+        )
+
+    def _restore_mutable_state(self, snapshot):
+        (
+            self.cash,
+            self.positions,
+            self.seen_signal_ids,
+            self.daily_realized,
+            self.daily_date,
+        ) = snapshot
+
+    def _persist_transaction(self, snapshot, journal_size):
+        try:
+            self._persist()
+        except Exception:
+            self._restore_mutable_state(snapshot)
+            # Undo a partial append where possible so the journal remains readable.
+            try:
+                if os.path.exists(self.journal_path):
+                    with open(self.journal_path, "r+b") as handle:
+                        handle.truncate(journal_size)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+            except OSError:
+                pass
+            raise
 
     def _persist(self):
         directory = os.path.dirname(self.journal_path)
@@ -200,6 +245,7 @@ class PaperTrader:
             Decimal("0"),
         )
 
+    @_synchronized
     def mark_to_market(self, prices):
         """Update marks from a caller-validated market snapshot.
 
@@ -236,6 +282,7 @@ class PaperTrader:
         if signal_id in self.seen_signal_ids:
             raise PaperTradeError("Duplicate signal rejected")
 
+    @_synchronized
     def buy(self, symbol, price, quantity, signal_id, timestamp_ms=None):
         if not isinstance(symbol, str) or not symbol.strip():
             raise PaperTradeError("Symbol is required")
@@ -270,13 +317,15 @@ class PaperTrader:
         old_cost = old["avg_cost"] * old_qty if old else Decimal("0")
         new_qty = old_qty + quantity
 
+        snapshot = self._snapshot_mutable_state()
+        journal_size = os.path.getsize(self.journal_path) if os.path.exists(self.journal_path) else 0
         self.cash -= total_cost
         self.positions[symbol] = {
             "qty": new_qty,
             "avg_cost": (old_cost + total_cost) / new_qty,
         }
         self.seen_signal_ids.add(signal_id)
-        self._persist()
+        self._persist_transaction(snapshot, journal_size)
 
         return {
             "side": "BUY",
@@ -287,6 +336,7 @@ class PaperTrader:
             "cash": self.cash,
         }
 
+    @_synchronized
     def sell(self, symbol, price, quantity, signal_id, timestamp_ms=None):
         if not isinstance(symbol, str) or not symbol.strip():
             raise PaperTradeError("Symbol is required")
@@ -314,6 +364,8 @@ class PaperTrader:
         cost_basis = position["avg_cost"] * quantity
         realized = proceeds - cost_basis
 
+        snapshot = self._snapshot_mutable_state()
+        journal_size = os.path.getsize(self.journal_path) if os.path.exists(self.journal_path) else 0
         self.cash += proceeds
         remaining = position["qty"] - quantity
 
@@ -324,7 +376,7 @@ class PaperTrader:
 
         self.daily_realized += realized
         self.seen_signal_ids.add(signal_id)
-        self._persist()
+        self._persist_transaction(snapshot, journal_size)
 
         return {
             "side": "SELL",
@@ -336,6 +388,7 @@ class PaperTrader:
             "cash": self.cash,
         }
 
+    @_synchronized
     def status(self):
         return {
             "cash": self.cash,
