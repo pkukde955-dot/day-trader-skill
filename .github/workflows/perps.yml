@@ -1,6 +1,9 @@
 name: CoinDCX Perps Tests
 
 on:
+  push:
+    branches:
+      - feat/coindcx-usdt-perps-only
   pull_request:
     paths:
       - 'trader-perps/**'
