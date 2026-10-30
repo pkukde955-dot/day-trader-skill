@@ -29,8 +29,7 @@ def detect_setup(candles_5m,candles_1h,mark):
 
 def size_for_risk(equity,entry,stop,risk_fraction,quantity_step,min_quantity,leverage,max_leverage):
     eq,en,st,rf,step,mn,lev,ml=map(_d,(equity,entry,stop,risk_fraction,quantity_step,min_quantity,leverage,max_leverage))
-    if min(eq,en,st,rf,step,mn,lev)>0 or en==st: pass
-    else: return Decimal("0")
+    if min(eq,en,st,rf,step,mn,lev)<=0 or en==st: return Decimal("0")
     if lev>ml or rf>Decimal("0.02"): return Decimal("0")
     per_unit=abs(en-st)
     risk_qty=eq*rf/per_unit
