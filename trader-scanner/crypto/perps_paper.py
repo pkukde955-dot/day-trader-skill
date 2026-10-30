@@ -233,7 +233,7 @@ class PerpsPaperTrader:
                     "fill_price": fill, "gross_pnl": pnl, "exit_fee": fee,
                     "net_pnl": net, "balance": self.balance}
 
-    def apply_funding(self, symbol, funding_rate, event_id, mark_price=None):
+    def apply_funding(self, symbol, funding_rate, event_id, mark_price=None, timestamp_ms=None):
         with self._lock:
             if symbol not in self.positions:
                 raise PaperPerpsError("No open position for funding")
@@ -248,7 +248,8 @@ class PerpsPaperTrader:
             payment = -sign * mark * p["qty"] * rate
             before = self._snapshot()
             self.balance += payment
-            self._roll_day(int(time.time() * 1000))
+            ts = timestamp_ms if timestamp_ms is not None else int(time.time() * 1000)
+            self._roll_day(ts)
             self.daily_realized += payment
             p["funding_paid"] += -payment
             self.funding_events.add(event_id)
