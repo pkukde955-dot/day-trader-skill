@@ -403,7 +403,7 @@ class PaperTraderTests(unittest.TestCase):
 
     def test_restart_rejects_corrupt_complete_journal_record(self):
         with open(self.journal, "wb") as handle:
-            handle.write(b'{"type":"broken"}\\n')
+            handle.write(b'{"type":"broken"}\n')
         with self.assertRaisesRegex(paper.PaperTradeError, "recovery failed"):
             paper.PaperTrader(journal_path=self.journal)
 
